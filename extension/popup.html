@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy Companion</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <span class="icon">🛡️</span>
+      <span class="title">AI Proxy Companion</span>
+    </div>
+    <span class="badge" id="connStatusBadge">Disconnected</span>
+  </div>
+
+  <div class="consent-box">
+    <div class="consent-title">🔒 User Privacy & Consent</div>
+    <p class="consent-text">
+      This extension only reads your currently configured Chrome proxy settings. It does NOT collect browsing history or private data.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Current Chrome Configuration</div>
+    <div class="info-row">
+      <span class="info-key">Mode:</span>
+      <span class="info-val" id="proxyMode">Detecting...</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Detected Proxy:</span>
+      <span class="info-val font-mono" id="detectedEndpoint">None</span>
+    </div>
+  </div>
+
+  <div class="config-section">
+    <label for="apiUrlInput">Platform API URL</label>
+    <input type="text" id="apiUrlInput" value="http://localhost:3000" placeholder="http://localhost:3000">
+
+    <label for="pairingTokenInput">Pairing Secret Token</label>
+    <input type="password" id="pairingTokenInput" value="dev-chrome-extension-pairing-token-321" placeholder="Enter pairing token">
+  </div>
+
+  <div class="actions">
+    <button id="syncBtn" class="btn btn-primary">
+      <span>Sync Proxy to Platform</span>
+    </button>
+    <button id="refreshBtn" class="btn btn-secondary">
+      <span>Detect Again</span>
+    </button>
+  </div>
+
+  <div id="statusMessage" class="status-msg hidden"></div>
+
+  <div class="footer">
+    <span>AI Proxy Intelligence & Monitoring v1.0</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

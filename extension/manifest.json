@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "AI Proxy Intelligence - Browser Companion",
+  "version": "1.0.0",
+  "description": "Securely read and sync your Chrome proxy settings with your AI Proxy Intelligence Platform dashboard.",
+  "permissions": [
+    "proxy",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://*.supabase.co/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Proxy Companion"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
