@@ -322,7 +322,7 @@ function initializeSeedData(): DBState {
       id: 'notif-1',
       owner_id: DEFAULT_OWNER_ID,
       title: 'Proxy Recovered: INACTIVE -> ACTIVE',
-      message: 'Proxy socks5://198.51.100.45:1080 passed diagnostic checks. Latency: 124ms.',
+      message: 'Proxy socks5://45.74.31.47:1080 passed diagnostic checks. Latency: 124ms.',
       channel: 'in_app',
       type: 'proxy_recovered',
       proxy_id: 'prx-101',
@@ -333,7 +333,7 @@ function initializeSeedData(): DBState {
       id: 'notif-2',
       owner_id: DEFAULT_OWNER_ID,
       title: 'Proxy Downtime Detected',
-      message: 'Proxy socks5://203.0.113.88:9050 failed connectivity test. Scheduled for backoff retry.',
+      message: 'Proxy socks5://94.141.178.82:9050 failed connectivity test. Scheduled for backoff retry.',
       channel: 'in_app',
       type: 'proxy_failed',
       proxy_id: 'prx-103',
@@ -1039,11 +1039,31 @@ class Repository {
       ? Math.round((active / (active + inactive || 1)) * 100) 
       : 100;
 
-    // 7-day trend mock data aligned with real counts
+    // Real 7-day trend calculation from actual check_history & transitions
     const dates = ['6d ago', '5d ago', '4d ago', '3d ago', '2d ago', 'Yesterday', 'Today'];
-    const activeTrend = [Math.max(1, active - 2), Math.max(1, active - 1), active, Math.max(1, active - 1), active, active + 1, active];
-    const inactiveTrend = [Math.max(0, inactive + 1), inactive, Math.max(0, inactive + 2), inactive, Math.max(0, inactive - 1), inactive, inactive];
-    const recoveredTrend = [1, 0, 2, 1, 0, 1, recoveredRecently];
+    const activeTrend: number[] = [];
+    const inactiveTrend: number[] = [];
+    const recoveredTrend: number[] = [];
+
+    const now = new Date();
+    for (let dayOffset = 6; dayOffset >= 0; dayOffset--) {
+      const targetDate = new Date(now.getTime() - dayOffset * 86400000).toDateString();
+
+      const dayChecks = this.state.check_history.filter(c => 
+        new Date(c.check_timestamp).toDateString() === targetDate
+      );
+      const dayActive = dayChecks.filter(c => c.status === 'ACTIVE').length;
+      const dayInactive = dayChecks.filter(c => c.status === 'INACTIVE').length;
+
+      const dayRecoveries = this.state.transitions.filter(t => 
+        new Date(t.transitioned_at).toDateString() === targetDate &&
+        t.from_status === 'INACTIVE' && t.to_status === 'ACTIVE'
+      ).length;
+
+      activeTrend.push(dayOffset === 0 ? active : dayActive);
+      inactiveTrend.push(dayOffset === 0 ? inactive : dayInactive);
+      recoveredTrend.push(dayRecoveries);
+    }
 
     return {
       total_discovered: userProxies.length,
@@ -1053,7 +1073,7 @@ class Repository {
       quarantined_count: quarantined,
       auth_required_count: authRequired,
       unknown_count: unknown,
-      checks_completed_today: todayChecks || 12,
+      checks_completed_today: todayChecks,
       recovered_recently_count: recoveredRecently,
       average_latency_ms: avgLatency,
       configured_sources_count: this.state.sources.length,

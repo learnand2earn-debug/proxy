@@ -170,9 +170,9 @@ export async function fetchLivePublicFeeds(maxCount = 200): Promise<LiveDiscover
           country_name: cInfo.name,
           flag: cInfo.flag,
           anonymity: 'elite',
-          latency_ms: Math.floor(Math.random() * 150 + 45),
+          latency_ms: 0,
           source: 'monosans Realtime HTTP Feed',
-          verified_active: true,
+          verified_active: false,
           timestamp: new Date().toISOString()
         });
       }
@@ -199,9 +199,9 @@ export async function fetchLivePublicFeeds(maxCount = 200): Promise<LiveDiscover
           country_name: cInfo.name,
           flag: cInfo.flag,
           anonymity: 'elite',
-          latency_ms: Math.floor(Math.random() * 180 + 50),
+          latency_ms: 0,
           source: 'monosans Realtime SOCKS5 Feed',
-          verified_active: true,
+          verified_active: false,
           timestamp: new Date().toISOString()
         });
       }
@@ -238,9 +238,9 @@ export async function fetchLivePublicFeeds(maxCount = 200): Promise<LiveDiscover
           country_name: cInfo.name,
           flag: cInfo.flag,
           anonymity: 'anonymous',
-          latency_ms: Math.floor(Math.random() * 200 + 75),
+          latency_ms: 0,
           source: 'TheSpeedX SOCKS4 Stream',
-          verified_active: true,
+          verified_active: false,
           timestamp: new Date().toISOString()
         });
       }

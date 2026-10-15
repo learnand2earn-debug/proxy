@@ -70,10 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Development fallback when opened directly in browser tab
       proxyModeEl.textContent = 'FIXED_SERVERS (Dev)';
-      detectedEndpointEl.textContent = 'socks5://198.51.100.150:8080';
+      detectedEndpointEl.textContent = 'socks5://45.74.31.47:1080';
       detectedConfig = {
         mode: 'fixed_servers',
-        endpoint: 'socks5://198.51.100.150:8080',
+        endpoint: 'socks5://45.74.31.47:1080',
         protocol: 'socks5',
         device: 'Workstation Chrome'
       };
