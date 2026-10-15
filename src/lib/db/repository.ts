@@ -92,9 +92,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-1',
       source_name: 'Primary Enterprise Pool',
-      normalized_endpoint: 'socks5://198.51.100.45:1080',
+      normalized_endpoint: 'socks5://45.74.31.47:1080',
       protocol: 'socks5',
-      host: '198.51.100.45',
+      host: '45.74.31.47',
       port: 1080,
       auth_required: false,
       current_status: 'ACTIVE',
@@ -109,7 +109,7 @@ function initializeSeedData(): DBState {
       consecutive_failures: 0,
       recovery_count: 2,
       is_quarantined: false,
-      country_code: 'US',
+      country_code: 'NL',
       anonymity: 'elite',
       tags: ['datacenter', 'fast', 'production']
     },
@@ -118,9 +118,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-1',
       source_name: 'Primary Enterprise Pool',
-      normalized_endpoint: 'https://198.51.100.72:8443',
+      normalized_endpoint: 'https://141.98.153.86:8443',
       protocol: 'https',
-      host: '198.51.100.72',
+      host: '141.98.153.86',
       port: 8443,
       auth_required: false,
       current_status: 'ACTIVE',
@@ -144,9 +144,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-2',
       source_name: 'Public Verified Geo Feed',
-      normalized_endpoint: 'socks5://203.0.113.88:9050',
+      normalized_endpoint: 'socks5://94.141.178.82:9050',
       protocol: 'socks5',
-      host: '203.0.113.88',
+      host: '94.141.178.82',
       port: 9050,
       auth_required: false,
       current_status: 'INACTIVE',
@@ -172,9 +172,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-1',
       source_name: 'Primary Enterprise Pool',
-      normalized_endpoint: 'http://auth_user:••••••@198.51.100.99:3128',
+      normalized_endpoint: 'http://auth_user:••••••@38.154.233.182:3128',
       protocol: 'http',
-      host: '198.51.100.99',
+      host: '38.154.233.182',
       port: 3128,
       auth_required: true,
       username: 'auth_user',
@@ -201,9 +201,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-2',
       source_name: 'Public Verified Geo Feed',
-      normalized_endpoint: 'socks4://203.0.113.19:1080',
+      normalized_endpoint: 'socks4://51.15.211.42:1080',
       protocol: 'socks4',
-      host: '203.0.113.19',
+      host: '51.15.211.42',
       port: 1080,
       auth_required: false,
       current_status: 'INVALID',
@@ -230,9 +230,9 @@ function initializeSeedData(): DBState {
       owner_id: DEFAULT_OWNER_ID,
       source_id: 'src-3',
       source_name: 'Chrome Extension Sync',
-      normalized_endpoint: 'http://198.51.100.150:8080',
+      normalized_endpoint: 'http://103.149.130.38:8080',
       protocol: 'http',
-      host: '198.51.100.150',
+      host: '103.149.130.38',
       port: 8080,
       auth_required: false,
       current_status: 'ACTIVE',
@@ -264,7 +264,7 @@ function initializeSeedData(): DBState {
       reason: 'Periodic monitoring detected health check recovery. Diagnostic ping verified.',
       notified: true,
       latency_ms: 124,
-      endpoint_masked: 'socks5://198.51.100.45:1080'
+      endpoint_masked: 'socks5://45.74.31.47:1080'
     },
     {
       id: 'trans-2',
@@ -276,7 +276,7 @@ function initializeSeedData(): DBState {
       reason: 'Connection attempt timed out waiting for proxy acknowledgment.',
       notified: true,
       latency_ms: 6012,
-      endpoint_masked: 'socks5://203.0.113.88:9050'
+      endpoint_masked: 'socks5://94.141.178.82:9050'
     }
   ];
 
@@ -843,6 +843,15 @@ class Repository {
     this.state.sources.push(newSrc);
     this.save();
     return newSrc;
+  }
+
+  public updateSource(id: string, updates: Partial<ProxySource>): ProxySource | null {
+    const s = this.state.sources.find(src => src.id === id);
+    if (!s) return null;
+    Object.assign(s, updates);
+    s.updated_at = new Date().toISOString();
+    this.save();
+    return s;
   }
 
   public deleteSource(id: string): boolean {

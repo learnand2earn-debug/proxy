@@ -14,9 +14,11 @@ export async function POST(
 
     const res = await discoveryEngine.ingestSource(source, undefined, DEFAULT_OWNER_ID);
 
-    source.last_synced_at = new Date().toISOString();
-    source.last_sync_status = res.discoveryResult.sync_error ? 'failed' : 'success';
-    source.last_sync_error = res.discoveryResult.sync_error;
+    repo.updateSource(source.id, {
+      last_synced_at: new Date().toISOString(),
+      last_sync_status: res.discoveryResult.sync_error ? 'failed' : 'success',
+      last_sync_error: res.discoveryResult.sync_error
+    });
 
     return NextResponse.json({
       success: !res.discoveryResult.sync_error,

@@ -1,0 +1,25 @@
+import { NextResponse } from 'next/server';
+import { fetchLivePublicFeeds, ingestLiveProxiesIntoDatabase } from '@/lib/discovery/live_stream';
+import { DEFAULT_OWNER_ID } from '@/lib/db/repository';
+
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const count = Math.min(parseInt(body.count || '100', 10), 300);
+
+    const fresh = await fetchLivePublicFeeds(count);
+    const { inserted, duplicates } = await ingestLiveProxiesIntoDatabase(fresh, DEFAULT_OWNER_ID, true);
+
+    return NextResponse.json({
+      success: true,
+      discovered: fresh.length,
+      inserted,
+      duplicates,
+      sample: fresh.slice(0, 5)
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

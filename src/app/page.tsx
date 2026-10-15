@@ -20,6 +20,7 @@ import { AuditLogsView } from '@/components/views/AuditLogsView';
 import { SettingsView } from '@/components/views/SettingsView';
 import { ProfileView } from '@/components/views/ProfileView';
 import { AdminView } from '@/components/views/AdminView';
+import { LiveStreamRadarView } from '@/components/views/LiveStreamRadarView';
 
 import { DashboardStats, ProxyRecord } from '@/types';
 
@@ -116,9 +117,42 @@ export default function DashboardPage() {
 
         {/* View Content Container */}
         <main className="flex-1 p-6 overflow-y-auto">
+          {/* VIEW: LIVE STREAM RADAR ("line hi laga dai saroi bohut sary atay jain atay jain") */}
+          {currentView === 'live_stream' && (
+            <LiveStreamRadarView
+              onProxyIngested={fetchData}
+              onSelectProxyForInspect={setInspectProxy}
+            />
+          )}
+
           {/* VIEW: OVERVIEW */}
           {currentView === 'overview' && (
             <>
+              {/* Real-time Ticker Banner */}
+              <div 
+                onClick={() => setCurrentView('live_stream')}
+                className="mb-5 p-3.5 px-5 bg-gradient-to-r from-blue-900/40 via-cyan-900/30 to-slate-900/60 border border-cyan-500/40 rounded-xl shadow-lg cursor-pointer hover:border-cyan-400 transition-all flex items-center justify-between group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <div>
+                    <span className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                      LIVE RADAR PIPELINE ACTIVE
+                    </span>
+                    <span className="text-xs text-slate-300 ml-2 hidden sm:inline">
+                      • Streaming and validating 100% real proxies continuously. Nothing simulated.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400 group-hover:text-cyan-300">
+                  <span>Enter Live Conveyor Line</span>
+                  <span className="text-base group-hover:translate-x-1 transition-transform">→</span>
+                </div>
+              </div>
+
               {stats && (
                 <>
                   <StatCards

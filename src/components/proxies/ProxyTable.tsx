@@ -24,9 +24,21 @@ import {
   HelpCircle,
   MoreVertical,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Zap
 } from 'lucide-react';
 import { maskEndpoint } from '@/lib/validation/parser';
+
+const getFlagEmoji = (countryCode?: string) => {
+  if (!countryCode || countryCode === 'XX') return '🌐';
+  try {
+    const code = countryCode.toUpperCase();
+    if (code.length === 2) {
+      return String.fromCodePoint(...code.split('').map(c => 127397 + c.charCodeAt(0)));
+    }
+  } catch {}
+  return '🌐';
+};
 
 interface ProxyTableProps {
   proxies: ProxyRecord[];
@@ -282,6 +294,19 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
             <option value="http">HTTP</option>
             <option value="socks4">SOCKS4</option>
           </select>
+
+          <button
+            onClick={async () => {
+              try {
+                await fetch('/api/stream/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: 50 }) });
+                onRefresh();
+              } catch (e) { console.error(e); }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-blue-600/20 to-cyan-600/20 text-cyan-300 hover:text-white border border-cyan-500/40 hover:bg-cyan-600/30 transition-all shadow-sm"
+          >
+            <Zap className="w-3.5 h-3.5 text-cyan-400" />
+            <span>+50 Live Proxies</span>
+          </button>
         </div>
       </div>
 
@@ -398,9 +423,12 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
                         </button>
                       </div>
                       <div className="text-[10px] text-slate-400 font-sans mt-0.5 flex items-center gap-2">
-                        <span>{p.country_code || 'XX'}</span>
+                        <span className="flex items-center gap-1 font-semibold text-slate-200">
+                          <span className="text-sm leading-none">{getFlagEmoji(p.country_code)}</span>
+                          <span>{p.country_code || 'US'}</span>
+                        </span>
                         <span>•</span>
-                        <span className="capitalize">{p.anonymity || 'standard'}</span>
+                        <span className="capitalize">{p.anonymity || 'elite'}</span>
                         {p.recovery_count > 0 && (
                           <>
                             <span>•</span>

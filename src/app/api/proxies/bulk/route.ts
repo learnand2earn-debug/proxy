@@ -35,20 +35,26 @@ export async function POST(request: Request) {
     }
 
     if (action === 'recheck') {
-      // Run checks concurrently up to 5 at a time
       const results: any[] = [];
-      for (const id of ids) {
-        const proxy = repo.getProxyById(id);
-        if (proxy) {
-          try {
-            const checkRes = await checkProxyEndpoint(proxy, { timeoutMs: 5000 });
-            repo.updateProxyCheck(proxy.id, checkRes);
-            results.push({ id, status: checkRes.status, latency_ms: checkRes.latency_ms });
-            affectedCount++;
-          } catch (e: any) {
-            results.push({ id, error: e.message });
-          }
-        }
+      const CHUNK_SIZE = 10;
+      
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunkIds = ids.slice(i, i + CHUNK_SIZE);
+        await Promise.allSettled(
+          chunkIds.map(async (id) => {
+            const proxy = repo.getProxyById(id);
+            if (proxy) {
+              try {
+                const checkRes = await checkProxyEndpoint(proxy, { timeoutMs: 4000 });
+                repo.updateProxyCheck(proxy.id, checkRes);
+                results.push({ id, status: checkRes.status, latency_ms: checkRes.latency_ms });
+                affectedCount++;
+              } catch (e: any) {
+                results.push({ id, error: e.message });
+              }
+            }
+          })
+        );
       }
       return NextResponse.json({ success: true, action, affectedCount, results });
     }

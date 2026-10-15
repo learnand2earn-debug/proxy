@@ -65,7 +65,7 @@ export async function checkProxyEndpoint(
       return await checkHttpProxy({
         ...parsed,
         protocol: parsed.protocol as 'http' | 'https'
-      }, timeoutMs);
+      }, timeoutMs, options.diagnosticTargetUrl);
     }
   } catch (err: any) {
     const totalLatency = Date.now() - startTime;
@@ -162,24 +162,106 @@ async function checkSocksProxy(
 }
 
 /**
- * Checks an HTTP / HTTPS forward proxy using CONNECT or GET request.
+ * Checks an HTTP / HTTPS forward proxy using CONNECT tunnel or direct GET request.
  */
 async function checkHttpProxy(
   endpoint: { protocol: 'http' | 'https'; host: string; port: number; username?: string; password?: string },
-  timeoutMs: number
+  timeoutMs: number,
+  customTargetUrl?: string
 ): Promise<ProxyCheckResult> {
   const startTime = Date.now();
 
+  const authHeader = endpoint.username 
+    ? `Basic ${Buffer.from(`${endpoint.username}:${endpoint.password || ''}`).toString('base64')}`
+    : undefined;
+
+  // Step A: Attempt HTTP CONNECT tunnel check (standard for enterprise/HTTPS forward proxies)
+  const connectResult = await new Promise<ProxyCheckResult | null>((resolve) => {
+    let resolved = false;
+    const reqHeaders: Record<string, string> = {
+      'Host': '1.1.1.1:80',
+      'User-Agent': 'ProxyIntel-Probe/2.0'
+    };
+    if (authHeader) reqHeaders['Proxy-Authorization'] = authHeader;
+
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        req.destroy();
+        resolve(null); // Fallback to GET check
+      }
+    }, Math.min(timeoutMs, 3500));
+
+    const req = http.request({
+      host: endpoint.host,
+      port: endpoint.port,
+      method: 'CONNECT',
+      path: '1.1.1.1:80',
+      headers: reqHeaders,
+      timeout: timeoutMs
+    });
+
+    req.on('connect', (res, socket) => {
+      clearTimeout(timer);
+      if (resolved) return;
+      resolved = true;
+      const latency = Date.now() - startTime;
+      socket.destroy();
+
+      if (res.statusCode === 200) {
+        resolve({
+          status: 'ACTIVE',
+          latency_ms: latency,
+          handshake_success: true,
+          status_code: 200,
+          diagnostic_target: 'tcp://1.1.1.1:80 (CONNECT Tunnel)',
+          checked_at: new Date().toISOString()
+        });
+      } else if (res.statusCode === 407) {
+        resolve({
+          status: 'AUTH_REQUIRED',
+          latency_ms: latency,
+          handshake_success: true,
+          status_code: 407,
+          error_category: 'AUTHENTICATION_REQUIRED',
+          error_message: 'HTTP 407 Proxy Authentication Required',
+          checked_at: new Date().toISOString()
+        });
+      } else {
+        resolve(null); // Try GET probe
+      }
+    });
+
+    req.on('error', () => {
+      clearTimeout(timer);
+      if (!resolved) {
+        resolved = true;
+        resolve(null); // Fallback to GET
+      }
+    });
+
+    req.end();
+  });
+
+  if (connectResult) {
+    return connectResult;
+  }
+
+  // Step B: Fallback to direct HTTP GET forward request to a reliable public health target
+  const targetUrl = customTargetUrl || 'http://checkip.amazonaws.com';
+  let targetUrlObj: URL;
+  try {
+    targetUrlObj = new URL(targetUrl);
+  } catch {
+    targetUrlObj = new URL('http://checkip.amazonaws.com');
+  }
+
   return new Promise((resolve) => {
     let resolved = false;
-    const authHeader = endpoint.username 
-      ? `Basic ${Buffer.from(`${endpoint.username}:${endpoint.password || ''}`).toString('base64')}`
-      : undefined;
-
     const reqHeaders: Record<string, string> = {
-      'Host': 'diagnostic.internal',
-      'User-Agent': 'AI-Proxy-Intel-Diagnostic/1.0',
-      [DIAGNOSTIC_HEADER_NAME]: DIAGNOSTIC_HEADER_VALUE
+      'Host': targetUrlObj.host,
+      'User-Agent': 'curl/7.88.1',
+      'Accept': '*/*'
     };
 
     if (authHeader) {
@@ -195,7 +277,7 @@ async function checkHttpProxy(
           latency_ms: Date.now() - startTime,
           handshake_success: false,
           error_category: 'TIMEOUT',
-          error_message: `TCP connect or proxy response timed out after ${timeoutMs}ms`,
+          error_message: `Connection attempt timed out after ${timeoutMs}ms`,
           checked_at: new Date().toISOString()
         });
       }
@@ -205,7 +287,7 @@ async function checkHttpProxy(
       host: endpoint.host,
       port: endpoint.port,
       method: 'GET',
-      path: 'http://diagnostic.internal/api/health/diagnostic',
+      path: targetUrl,
       headers: reqHeaders,
       timeout: timeoutMs
     }, (res) => {
@@ -215,6 +297,9 @@ async function checkHttpProxy(
 
       const latency = Date.now() - startTime;
       const statusCode = res.statusCode || 0;
+
+      // Consume response data to prevent socket leak
+      res.resume();
 
       // Check HTTP 407 Proxy Authentication Required
       if (statusCode === 407) {
@@ -237,7 +322,7 @@ async function checkHttpProxy(
           latency_ms: latency,
           handshake_success: true,
           status_code: statusCode,
-          diagnostic_target: 'http://diagnostic.internal/api/health/diagnostic',
+          diagnostic_target: targetUrl,
           checked_at: new Date().toISOString()
         });
         return;
@@ -248,7 +333,7 @@ async function checkHttpProxy(
         resolve({
           status: 'INACTIVE',
           latency_ms: latency,
-          handshake_success: true,
+          handshake_success: false,
           status_code: statusCode,
           error_category: 'PROXY_SERVER_ERROR',
           error_message: `Proxy returned upstream error status code: ${statusCode}`,
@@ -257,7 +342,7 @@ async function checkHttpProxy(
         return;
       }
 
-      // Other status codes still show proxy is alive
+      // Other status codes still show proxy host is alive and responding
       resolve({
         status: 'ACTIVE',
         latency_ms: latency,
