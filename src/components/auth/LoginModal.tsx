@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Key, 
   ShieldCheck, 
@@ -15,7 +15,6 @@ import {
   X,
   Shield,
   Activity,
-  Cpu,
   Layers
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -23,6 +22,13 @@ import { useAuth } from '@/lib/auth/AuthContext';
 interface LoginModalProps {
   onLoginSuccess?: (role: 'admin' | 'user') => void;
 }
+
+// 3 Background Videos to be seamlessly looped across the entire viewport
+const BG_VIDEOS = [
+  '/videos/bg1.mp4',
+  '/videos/bg2.mp4',
+  '/videos/bg3.mp4'
+];
 
 export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const { isLoginModalOpen, setIsLoginModalOpen, login, isAuthenticated } = useAuth();
@@ -38,6 +44,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
+
+  // Background Videos Continuous Sequential Looping
+  const [activeVideoIdx, setActiveVideoIdx] = useState(0);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+
+  useEffect(() => {
+    const currentVideo = videoRefs.current[activeVideoIdx];
+    if (currentVideo) {
+      currentVideo.currentTime = 0;
+      const playPromise = currentVideo.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          console.debug('Autoplay waiting for user gesture or preloading:', e);
+        });
+      }
+    }
+  }, [activeVideoIdx]);
 
   // If already authenticated and modal is not explicitly triggered, don't show
   if (isAuthenticated && !isLoginModalOpen) {
@@ -84,25 +107,50 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050814]/90 backdrop-blur-2xl animate-in fade-in duration-300">
-      {/* Background Animated Plasma Orbs */}
-      <div className="absolute top-1/4 left-1/3 w-80 h-80 rounded-full bg-cyan-500/20 animate-spark-glow-pulse pointer-events-none -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 rounded-full bg-blue-600/20 animate-spark-float pointer-events-none translate-x-1/3" />
-      <div className="absolute top-2/3 left-1/4 w-64 h-64 rounded-full bg-indigo-600/15 animate-spark-float-reverse pointer-events-none" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden animate-in fade-in duration-500">
+      {/* FULL-SCREEN CONTINUOUS LOOPING BACKGROUND VIDEOS */}
+      <div className="fixed inset-0 w-full h-full pointer-events-none -z-10 overflow-hidden bg-[#050814]">
+        {BG_VIDEOS.map((src, idx) => (
+          <video
+            key={src}
+            ref={(el) => {
+              videoRefs.current[idx] = el;
+            }}
+            src={src}
+            autoPlay={idx === 0}
+            muted
+            playsInline
+            preload="auto"
+            onEnded={() => setActiveVideoIdx((prev) => (prev + 1) % BG_VIDEOS.length)}
+            className={`absolute inset-0 w-full h-full object-cover transition-all duration-1000 ${
+              activeVideoIdx === idx 
+                ? 'opacity-45 scale-105 filter brightness-90 contrast-125' 
+                : 'opacity-0 scale-100 pointer-events-none'
+            }`}
+          />
+        ))}
 
-      {/* Cyber Grid Mask Overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b12_1px,transparent_1px),linear-gradient(to_bottom,#1e293b12_1px,transparent_1px)] bg-[size:28px_28px] pointer-events-none opacity-40"></div>
+        {/* Ambient Dark-Tech Tint Overlay (Balanced so video motion clearly shines through) */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#050814]/75 via-[#050814]/50 to-[#050814]/80 backdrop-blur-[1px]"></div>
+
+        {/* Subtle Cyber Tech Grid */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b20_1px,transparent_1px),linear-gradient(to_bottom,#1e293b20_1px,transparent_1px)] bg-[size:28px_28px] opacity-40"></div>
+
+        {/* Dynamic Animated Ambient Glow Lights */}
+        <div className="absolute top-1/4 left-1/4 w-80 h-80 rounded-full bg-cyan-500/20 animate-spark-glow-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-blue-600/20 animate-spark-float pointer-events-none" />
+      </div>
 
       {/* Main Glassmorphic Modal Container */}
-      <div className="relative w-full max-w-md rounded-3xl bg-[#0a0f1d]/95 border border-cyan-500/30 shadow-[0_0_60px_-15px_rgba(6,182,212,0.35)] overflow-hidden transition-all duration-300">
+      <div className="relative w-full max-w-md rounded-3xl bg-[#0a0f1d]/90 backdrop-blur-xl border border-cyan-500/35 shadow-[0_0_70px_-10px_rgba(6,182,212,0.4)] overflow-hidden transition-all duration-300">
         {/* Animated Flowing Top Gradient Border */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 animate-spark-border-flow"></div>
 
         {/* Floating Twinkle Sparkle Elements */}
-        <div className="absolute top-4 right-16 pointer-events-none animate-spark-twinkle text-cyan-400/60">
+        <div className="absolute top-4 right-16 pointer-events-none animate-spark-twinkle text-cyan-400/70">
           <Sparkles className="w-4 h-4" />
         </div>
-        <div className="absolute bottom-12 left-6 pointer-events-none animate-spark-twinkle text-blue-400/40 delay-1000">
+        <div className="absolute bottom-12 left-6 pointer-events-none animate-spark-twinkle text-blue-400/50 delay-1000">
           <Sparkles className="w-3.5 h-3.5" />
         </div>
 
@@ -128,7 +176,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                     DRM ACTIVE
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 font-medium">
+                <p className="text-xs text-slate-300 mt-0.5 flex items-center gap-1.5 font-medium">
                   <span>Proxy & Web Intelligence Terminal</span>
                 </p>
               </div>
@@ -150,7 +198,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         {/* Modal Body */}
         <div className="p-7 space-y-5">
           {/* Method Selection Tabs with Smooth Slider Glow */}
-          <div className="grid grid-cols-2 p-1.5 bg-[#0e162a] rounded-2xl border border-[#1e2d54] text-xs shadow-inner">
+          <div className="grid grid-cols-2 p-1.5 bg-[#0e162a]/95 rounded-2xl border border-[#1e2d54] text-xs shadow-inner">
             <button
               type="button"
               onClick={() => {
@@ -190,7 +238,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           <form onSubmit={handleSignIn} className="space-y-4">
             {loginMethod === 'key' ? (
               <div className="space-y-1.5 animate-in fade-in duration-200">
-                <label className="block text-xs font-semibold text-slate-300">
+                <label className="block text-xs font-semibold text-slate-200">
                   Commercial License Key
                 </label>
                 <div className="relative group">
@@ -200,7 +248,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                     placeholder="WSP-MONTHLY-XXXX-XXXX"
                     value={licenseKey}
                     onChange={(e) => setLicenseKey(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-[#0c1322] border border-[#1e2d54] focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl text-white font-mono text-xs outline-none transition-all placeholder:text-slate-500 shadow-inner"
+                    className="w-full pl-11 pr-4 py-3 bg-[#0c1322]/90 border border-[#1e2d54] focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl text-white font-mono text-xs outline-none transition-all placeholder:text-slate-500 shadow-inner"
                     required
                     autoFocus
                   />
@@ -213,7 +261,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             ) : (
               <div className="space-y-3.5 animate-in fade-in duration-200">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-200 mb-1.5">
                     Administrator Username
                   </label>
                   <div className="relative group">
@@ -223,7 +271,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                       placeholder="Enter admin username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-[#0c1322] border border-[#1e2d54] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500 shadow-inner"
+                      className="w-full pl-11 pr-4 py-3 bg-[#0c1322]/90 border border-[#1e2d54] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500 shadow-inner"
                       required
                       autoFocus
                     />
@@ -231,7 +279,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-200 mb-1.5">
                     Administrator Password
                   </label>
                   <div className="relative group">
@@ -241,7 +289,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-[#0c1322] border border-[#1e2d54] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500 shadow-inner"
+                      className="w-full pl-11 pr-4 py-3 bg-[#0c1322]/90 border border-[#1e2d54] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500 shadow-inner"
                       required
                     />
                   </div>
@@ -258,8 +306,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             {errorMsg && (
               <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1 duration-200 ${
                 isLocked 
-                  ? 'bg-rose-950/60 border-rose-500/60 text-rose-200 shadow-lg shadow-rose-950/50' 
-                  : 'bg-amber-950/50 border-amber-500/50 text-amber-200 shadow-lg shadow-amber-950/50'
+                  ? 'bg-rose-950/80 border-rose-500/60 text-rose-200 shadow-lg shadow-rose-950/50' 
+                  : 'bg-amber-950/70 border-amber-500/50 text-amber-200 shadow-lg shadow-amber-950/50'
               }`}>
                 <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${isLocked ? 'text-rose-400' : 'text-amber-400'}`} />
                 <div className="space-y-0.5">
@@ -304,7 +352,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         </div>
 
         {/* Footer Origin Information & Telemetry Status */}
-        <div className="px-7 py-3 bg-[#060a16] border-t border-[#131d35] flex items-center justify-between text-[11px] text-slate-400 font-mono">
+        <div className="px-7 py-3 bg-[#060a16]/90 border-t border-[#131d35] flex items-center justify-between text-[11px] text-slate-400 font-mono">
           <span className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>Target DRM Origin:</span>
