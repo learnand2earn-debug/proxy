@@ -190,3 +190,52 @@ export interface DashboardStats {
   protocol_distribution: Record<ProxyProtocol, number>;
   status_distribution: Record<ProxyStatus, number>;
 }
+
+export type LicensePlanType = 'monthly' | 'annual' | 'lifetime';
+
+export type LicenseStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+
+export interface LicenseRecord {
+  id: string;
+  license_key: string;            // e.g. "WSP-MONTHLY-XXXX-XXXX"
+  customer_name: string;          // Customer / User Name
+  customer_username: string;      // Username for login
+  password: string;               // Password for login
+  plan_type: LicensePlanType;     // 'monthly' (30 days) | 'annual' (365 days) | 'lifetime'
+  status: LicenseStatus;          // 'ACTIVE' | 'EXPIRED' | 'REVOKED'
+  created_at: string;
+  expires_at: string;             // ISO timestamp
+  max_concurrent_sites: number;   // Strictly 1
+  active_origin?: string;         // e.g. "https://client-site.com" or "http://localhost:3000"
+  active_session_token?: string;  // Unique active session token
+  last_active_at?: string;        // Last heartbeat timestamp
+  total_logins: number;
+  notes?: string;
+}
+
+export interface AuthSession {
+  user_id: string;
+  name: string;
+  username: string;
+  role: 'admin' | 'user';
+  license_key?: string;
+  plan_type?: LicensePlanType;
+  expires_at?: string;
+  session_token: string;
+  bound_origin?: string;
+}
+
+export interface LicenseStats {
+  total: number;
+  active: number;
+  expired: number;
+  revoked: number;
+  bound_sessions: number;
+  by_plan: {
+    monthly: number;
+    annual: number;
+    lifetime: number;
+  };
+}
+
+

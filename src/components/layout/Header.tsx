@@ -10,9 +10,13 @@ import {
   Bot, 
   Activity, 
   CheckCircle2, 
-  AlertCircle
+  AlertCircle,
+  LogOut,
+  User,
+  Key
 } from 'lucide-react';
 import { PageView } from './Sidebar';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 interface HeaderProps {
   currentView: PageView;
@@ -33,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   unreadCount = 0,
   onOpenNotifications
 }) => {
+  const { session, logout, isAuthenticated, setIsLoginModalOpen } = useAuth();
   const [isRunningCycle, setIsRunningCycle] = useState(false);
   const [cycleMsg, setCycleMsg] = useState<string | null>(null);
 
@@ -53,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
     audit: { title: 'Audit Trails', subtitle: 'Security actions, quarantine events, deletions, and operator changes' },
     settings: { title: 'Platform Settings', subtitle: 'SSRF sandbox restrictions, target endpoints, and thresholds' },
     profile: { title: 'Profile & Security', subtitle: 'Operator credentials, pairing tokens, and consent preferences' },
+    licenses: { title: '🔑 DRM License & Concurrency Manager', subtitle: 'Manage customer subscription keys, 1-site domain locking, and active sessions' },
     admin: { title: 'System Administration', subtitle: 'Worker process status, memory footprint, and maintenance queues' },
   };
 
@@ -158,6 +164,41 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Bot className="w-4 h-4" />
         </button>
+
+        {/* User Auth Status & DRM Lock Chip */}
+        <div className="h-6 w-px bg-[#1a2540] mx-1"></div>
+
+        {isAuthenticated && session ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0f172a] border border-[#1e2d54] text-xs">
+              <div className={`w-2 h-2 rounded-full ${session.role === 'admin' ? 'bg-blue-400' : 'bg-cyan-400'} animate-pulse`}></div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-white leading-tight">
+                  {session.role === 'admin' ? 'Master Admin' : session.name}
+                </span>
+                <span className="text-[10px] text-cyan-400 font-mono">
+                  {session.role === 'admin' ? 'SUPERADMIN' : (session.plan_type ? session.plan_type.toUpperCase() : 'USER')}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => logout()}
+              title="Sign out & release 1-site DRM lock"
+              className="p-2 rounded-lg bg-[#131d35] hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-[#1e2d54] hover:border-rose-500/30 transition-all"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsLoginModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold transition-all shadow-sm"
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>Sign In / DRM License</span>
+          </button>
+        )}
       </div>
 
       {/* Cycle Banner Toast */}

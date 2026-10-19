@@ -22,10 +22,14 @@ import { ProfileView } from '@/components/views/ProfileView';
 import { AdminView } from '@/components/views/AdminView';
 import { LiveStreamRadarView } from '@/components/views/LiveStreamRadarView';
 import { CountryHarvesterView } from '@/components/views/CountryHarvesterView';
+import { LicenseManagerView } from '@/components/views/LicenseManagerView';
+
+import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
+import { LoginModal } from '@/components/auth/LoginModal';
 
 import { DashboardStats, ProxyRecord } from '@/types';
 
-export default function DashboardPage() {
+function DashboardContent() {
   const [currentView, setCurrentView] = useState<PageView>('overview');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [proxies, setProxies] = useState<ProxyRecord[]>([]);
@@ -327,8 +331,11 @@ export default function DashboardPage() {
           {currentView === 'audit' && <AuditLogsView />}
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'profile' && <ProfileView />}
-          {currentView === 'admin' && stats && (
-            <AdminView stats={stats} onRefreshData={fetchData} />
+          {currentView === 'licenses' && (
+            <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
+          )}
+          {currentView === 'admin' && (
+            <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
           )}
         </main>
       </div>
@@ -357,6 +364,17 @@ export default function DashboardPage() {
         onClose={() => setIsAIOpen(false)}
         onRefreshData={fetchData}
       />
+
+      {/* DRM AUTHENTICATION GATE MODAL */}
+      <LoginModal />
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <AuthProvider>
+      <DashboardContent />
+    </AuthProvider>
   );
 }

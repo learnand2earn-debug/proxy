@@ -13,7 +13,12 @@ import {
   ApplicationSettings, 
   DashboardStats,
   ProxyStatus,
-  ProxyProtocol
+  ProxyProtocol,
+  LicenseRecord,
+  LicensePlanType,
+  LicenseStatus,
+  AuthSession,
+  LicenseStats
 } from '@/types';
 import { parseProxyString, maskEndpoint } from '../validation/parser';
 
@@ -30,6 +35,7 @@ interface DBState {
   connections: BrowserConnection[];
   audit_logs: AuditLogItem[];
   settings: ApplicationSettings;
+  licenses: LicenseRecord[];
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -430,6 +436,8 @@ function initializeSeedData(): DBState {
     ai_assistant_auto_diagnose: true
   };
 
+  const licenses = getInitialSeedLicenses();
+
   return {
     proxies,
     sources,
@@ -439,8 +447,73 @@ function initializeSeedData(): DBState {
     schedules,
     connections,
     audit_logs,
-    settings
+    settings,
+    licenses
   };
+}
+
+export function getInitialSeedLicenses(): LicenseRecord[] {
+  return [
+    {
+      id: 'lic-101',
+      license_key: 'WSP-LIFETIME-GOLD-7788',
+      customer_name: 'Apex Data Labs Enterprise',
+      customer_username: 'apex_vip',
+      password: 'ApexPassword123!',
+      plan_type: 'lifetime',
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
+      expires_at: new Date('2099-12-31T23:59:59Z').toISOString(),
+      max_concurrent_sites: 1,
+      active_origin: 'http://localhost:3000',
+      active_session_token: 'wsp_sess_apex_initial',
+      last_active_at: new Date(Date.now() - 60000).toISOString(),
+      total_logins: 42,
+      notes: 'VIP Enterprise account with unrestricted lifetime access'
+    },
+    {
+      id: 'lic-102',
+      license_key: 'WSP-ANNUAL-9201-4432',
+      customer_name: 'CyberScrape Pro Systems',
+      customer_username: 'cyberscrape',
+      password: 'ScrapePass2026!',
+      plan_type: 'annual',
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 86400000 * 45).toISOString(),
+      expires_at: new Date(Date.now() + 86400000 * 320).toISOString(),
+      max_concurrent_sites: 1,
+      total_logins: 18,
+      notes: 'Annual single-seat license for web intelligence gathering'
+    },
+    {
+      id: 'lic-103',
+      license_key: 'WSP-MONTHLY-5512-9904',
+      customer_name: 'Alpha Tech Solutions',
+      customer_username: 'alphatech',
+      password: 'AlphaSecure2026',
+      plan_type: 'monthly',
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+      expires_at: new Date(Date.now() + 86400000 * 25).toISOString(),
+      max_concurrent_sites: 1,
+      total_logins: 9,
+      notes: 'Monthly starter package'
+    },
+    {
+      id: 'lic-104',
+      license_key: 'WSP-MONTHLY-1122-3344',
+      customer_name: 'Legacy Beta Tester',
+      customer_username: 'legacy_user',
+      password: 'BetaPass2025!',
+      plan_type: 'monthly',
+      status: 'EXPIRED',
+      created_at: new Date(Date.now() - 86400000 * 60).toISOString(),
+      expires_at: new Date(Date.now() - 86400000 * 30).toISOString(),
+      max_concurrent_sites: 1,
+      total_logins: 5,
+      notes: 'Expired trial subscription'
+    }
+  ];
 }
 
 class Repository {
@@ -457,7 +530,12 @@ class Repository {
       }
       if (fs.existsSync(DATA_FILE)) {
         const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (!parsed.licenses || !Array.isArray(parsed.licenses) || parsed.licenses.length === 0) {
+          parsed.licenses = getInitialSeedLicenses();
+          this.saveStateDirect(parsed);
+        }
+        return parsed;
       }
     } catch (e) {
       console.warn('Failed to load existing store.json, using seed data:', e);
@@ -1093,6 +1171,396 @@ class Repository {
       },
       protocol_distribution: protocolCounts,
       status_distribution: statusCounts
+    };
+  }
+
+  // --- LICENSES & DRM LOCKING ---
+  public getLicenses(filters: {
+    plan_type?: LicensePlanType;
+    status?: LicenseStatus;
+    search?: string;
+  } = {}): LicenseRecord[] {
+    if (!this.state.licenses) this.state.licenses = [];
+    let list = this.state.licenses.slice();
+
+    // Auto update expired licenses
+    const now = Date.now();
+    let changed = false;
+    list = list.map(lic => {
+      if (lic.status === 'ACTIVE' && lic.plan_type !== 'lifetime') {
+        if (new Date(lic.expires_at).getTime() < now) {
+          lic.status = 'EXPIRED';
+          changed = true;
+        }
+      }
+      return lic;
+    });
+    if (changed) {
+      this.save();
+    }
+
+    if (filters.plan_type) {
+      list = list.filter(l => l.plan_type === filters.plan_type);
+    }
+    if (filters.status) {
+      list = list.filter(l => l.status === filters.status);
+    }
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      list = list.filter(l => 
+        l.customer_name.toLowerCase().includes(q) ||
+        l.customer_username.toLowerCase().includes(q) ||
+        l.license_key.toLowerCase().includes(q) ||
+        (l.active_origin && l.active_origin.toLowerCase().includes(q))
+      );
+    }
+
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  public getLicenseById(id: string): LicenseRecord | undefined {
+    return (this.state.licenses || []).find(l => l.id === id);
+  }
+
+  public getLicenseByKey(key: string): LicenseRecord | undefined {
+    const clean = key.trim().toUpperCase();
+    return (this.state.licenses || []).find(l => l.license_key.toUpperCase() === clean);
+  }
+
+  public getLicenseByUsername(username: string): LicenseRecord | undefined {
+    const clean = username.trim().toLowerCase();
+    return (this.state.licenses || []).find(l => l.customer_username.toLowerCase() === clean);
+  }
+
+  public createLicense(data: {
+    customer_name: string;
+    customer_username?: string;
+    password?: string;
+    plan_type: LicensePlanType;
+    notes?: string;
+    expires_in_days?: number;
+  }): LicenseRecord {
+    if (!this.state.licenses) this.state.licenses = [];
+
+    const plan = data.plan_type;
+    const rand1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const rand2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const license_key = `WSP-${plan.toUpperCase()}-${rand1}-${rand2}`;
+    
+    const username = data.customer_username?.trim() || `user_${rand1.toLowerCase()}${rand2.toLowerCase()}`;
+    const password = data.password || `Pass_${rand1}${rand2}!`;
+    
+    const now = new Date();
+    let expiresDate: Date;
+    if (plan === 'lifetime') {
+      expiresDate = new Date('2099-12-31T23:59:59Z');
+    } else if (plan === 'annual') {
+      expiresDate = new Date(now.getTime() + (data.expires_in_days || 365) * 86400000);
+    } else {
+      expiresDate = new Date(now.getTime() + (data.expires_in_days || 30) * 86400000);
+    }
+
+    const record: LicenseRecord = {
+      id: `lic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      license_key,
+      customer_name: data.customer_name,
+      customer_username: username,
+      password,
+      plan_type: plan,
+      status: 'ACTIVE',
+      created_at: now.toISOString(),
+      expires_at: expiresDate.toISOString(),
+      max_concurrent_sites: 1,
+      total_logins: 0,
+      notes: data.notes
+    };
+
+    this.state.licenses.push(record);
+    this.save();
+    return record;
+  }
+
+  public updateLicense(id: string, updates: Partial<LicenseRecord>): LicenseRecord | null {
+    const idx = (this.state.licenses || []).findIndex(l => l.id === id);
+    if (idx === -1) return null;
+
+    const existing = this.state.licenses[idx];
+    const updated: LicenseRecord = {
+      ...existing,
+      ...updates,
+      id: existing.id,
+      created_at: existing.created_at
+    };
+
+    this.state.licenses[idx] = updated;
+    this.save();
+    return updated;
+  }
+
+  public deleteLicense(id: string): boolean {
+    const initialLen = (this.state.licenses || []).length;
+    this.state.licenses = (this.state.licenses || []).filter(l => l.id !== id);
+    if (this.state.licenses.length !== initialLen) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  public unbindLicenseOrigin(id: string): { success: boolean; message: string } {
+    const lic = (this.state.licenses || []).find(l => l.id === id);
+    if (!lic) return { success: false, message: 'License record not found' };
+
+    const oldOrigin = lic.active_origin || 'None';
+    lic.active_origin = undefined;
+    lic.active_session_token = undefined;
+    this.save();
+
+    return { 
+      success: true, 
+      message: `Origin lock '${oldOrigin}' cleared successfully. License can now bind to a new site.` 
+    };
+  }
+
+  public extendLicense(id: string, additionalDays: number): LicenseRecord | null {
+    const lic = (this.state.licenses || []).find(l => l.id === id);
+    if (!lic) return null;
+
+    const currentExpiry = new Date(lic.expires_at).getTime();
+    const baseTime = currentExpiry > Date.now() ? currentExpiry : Date.now();
+    const newExpiry = new Date(baseTime + additionalDays * 86400000).toISOString();
+
+    lic.expires_at = newExpiry;
+    if (lic.status === 'EXPIRED') {
+      lic.status = 'ACTIVE';
+    }
+    this.save();
+    return lic;
+  }
+
+  public toggleRevokeLicense(id: string, revoke?: boolean): LicenseRecord | null {
+    const lic = (this.state.licenses || []).find(l => l.id === id);
+    if (!lic) return null;
+
+    if (revoke !== undefined) {
+      lic.status = revoke ? 'REVOKED' : 'ACTIVE';
+    } else {
+      lic.status = lic.status === 'REVOKED' ? 'ACTIVE' : 'REVOKED';
+    }
+
+    if (lic.status === 'REVOKED') {
+      lic.active_origin = undefined;
+      lic.active_session_token = undefined;
+    }
+
+    this.save();
+    return lic;
+  }
+
+  public authenticate(credentials: {
+    usernameOrKey: string;
+    password?: string;
+    origin?: string;
+  }): {
+    success: boolean;
+    error?: string;
+    is_concurrent_locked?: boolean;
+    session?: AuthSession;
+  } {
+    const input = credentials.usernameOrKey.trim();
+    const origin = credentials.origin || '';
+
+    // Check Master Admin
+    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+    if (input.toLowerCase() === 'admin' && credentials.password === adminPass) {
+      const adminToken = `wsp_admin_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      return {
+        success: true,
+        session: {
+          user_id: 'admin-001',
+          name: 'Master System Administrator',
+          username: 'admin',
+          role: 'admin',
+          session_token: adminToken,
+          bound_origin: origin
+        }
+      };
+    }
+
+    // Customer Lookup: match license_key OR username
+    const lic = (this.state.licenses || []).find(l => 
+      l.license_key.toUpperCase() === input.toUpperCase() ||
+      l.customer_username.toLowerCase() === input.toLowerCase()
+    );
+
+    if (!lic) {
+      return { success: false, error: 'Invalid license key or username.' };
+    }
+
+    // If password provided or required
+    if (credentials.password && lic.password && lic.password !== credentials.password) {
+      return { success: false, error: 'Incorrect password for this customer account.' };
+    }
+
+    // Status checks
+    if (lic.status === 'REVOKED') {
+      return { 
+        success: false, 
+        error: 'Access Denied: This license has been revoked by administration. Contact support.' 
+      };
+    }
+
+    // Expiry check
+    if (lic.plan_type !== 'lifetime' && new Date(lic.expires_at).getTime() < Date.now()) {
+      lic.status = 'EXPIRED';
+      this.save();
+      return { 
+        success: false, 
+        error: `Subscription Expired: This license expired on ${new Date(lic.expires_at).toLocaleDateString()}. Please renew.` 
+      };
+    }
+
+    // Strict DRM Single-Site Concurrency Lock
+    const incomingOrigin = (origin || '').trim().toLowerCase();
+    const boundOrigin = (lic.active_origin || '').trim().toLowerCase();
+
+    if (lic.active_session_token && boundOrigin && incomingOrigin && boundOrigin !== incomingOrigin) {
+      // Check if previous session has had a heartbeat in last 5 minutes
+      const lastHeartbeat = lic.last_active_at ? new Date(lic.last_active_at).getTime() : 0;
+      const isStillAlive = (Date.now() - lastHeartbeat) < (5 * 60 * 1000); // 5 min
+
+      if (isStillAlive) {
+        return {
+          success: false,
+          is_concurrent_locked: true,
+          error: `Single-Site DRM Lock Active: This license is already in active use on origin '${lic.active_origin}'. Strictly 1 concurrent site/origin is permitted. Please log out from that site or request an unbind from administrator.`
+        };
+      }
+    }
+
+    // Bind session
+    const sessionToken = `wsp_user_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    lic.active_session_token = sessionToken;
+    lic.active_origin = origin || 'http://localhost:3000';
+    lic.last_active_at = new Date().toISOString();
+    lic.total_logins = (lic.total_logins || 0) + 1;
+    this.save();
+
+    return {
+      success: true,
+      session: {
+        user_id: lic.id,
+        name: lic.customer_name,
+        username: lic.customer_username,
+        role: 'user',
+        license_key: lic.license_key,
+        plan_type: lic.plan_type,
+        expires_at: lic.expires_at,
+        session_token: sessionToken,
+        bound_origin: lic.active_origin
+      }
+    };
+  }
+
+  public validateSession(sessionToken: string, origin?: string): {
+    valid: boolean;
+    error?: string;
+    session?: AuthSession;
+  } {
+    if (!sessionToken) return { valid: false, error: 'No session token provided' };
+
+    // Admin session check
+    if (sessionToken.startsWith('wsp_admin_')) {
+      return {
+        valid: true,
+        session: {
+          user_id: 'admin-001',
+          name: 'Master System Administrator',
+          username: 'admin',
+          role: 'admin',
+          session_token: sessionToken,
+          bound_origin: origin
+        }
+      };
+    }
+
+    const lic = (this.state.licenses || []).find(l => l.active_session_token === sessionToken);
+    if (!lic) {
+      return { valid: false, error: 'Session expired or invalidated by new login.' };
+    }
+
+    if (lic.status === 'REVOKED') {
+      return { valid: false, error: 'License revoked' };
+    }
+
+    if (lic.plan_type !== 'lifetime' && new Date(lic.expires_at).getTime() < Date.now()) {
+      lic.status = 'EXPIRED';
+      this.save();
+      return { valid: false, error: 'License expired' };
+    }
+
+    // Check origin drift if provided
+    if (origin && lic.active_origin && lic.active_origin.toLowerCase() !== origin.toLowerCase()) {
+      return { valid: false, error: `Origin mismatch: bound to ${lic.active_origin}` };
+    }
+
+    return {
+      valid: true,
+      session: {
+        user_id: lic.id,
+        name: lic.customer_name,
+        username: lic.customer_username,
+        role: 'user',
+        license_key: lic.license_key,
+        plan_type: lic.plan_type,
+        expires_at: lic.expires_at,
+        session_token: sessionToken,
+        bound_origin: lic.active_origin
+      }
+    };
+  }
+
+  public heartbeat(sessionToken: string): boolean {
+    if (!sessionToken || sessionToken.startsWith('wsp_admin_')) return true;
+    const lic = (this.state.licenses || []).find(l => l.active_session_token === sessionToken);
+    if (!lic) return false;
+    lic.last_active_at = new Date().toISOString();
+    this.save();
+    return true;
+  }
+
+  public logoutSession(sessionToken: string): boolean {
+    if (!sessionToken || sessionToken.startsWith('wsp_admin_')) return true;
+    const lic = (this.state.licenses || []).find(l => l.active_session_token === sessionToken);
+    if (!lic) return false;
+    lic.active_session_token = undefined;
+    lic.active_origin = undefined;
+    this.save();
+    return true;
+  }
+
+  public getLicenseStats(): LicenseStats {
+    const list = this.getLicenses();
+    const active = list.filter(l => l.status === 'ACTIVE').length;
+    const expired = list.filter(l => l.status === 'EXPIRED').length;
+    const revoked = list.filter(l => l.status === 'REVOKED').length;
+    const bound = list.filter(l => l.active_origin && l.active_session_token).length;
+
+    const monthly = list.filter(l => l.plan_type === 'monthly').length;
+    const annual = list.filter(l => l.plan_type === 'annual').length;
+    const lifetime = list.filter(l => l.plan_type === 'lifetime').length;
+
+    return {
+      total: list.length,
+      active,
+      expired,
+      revoked,
+      bound_sessions: bound,
+      by_plan: {
+        monthly,
+        annual,
+        lifetime
+      }
     };
   }
 }

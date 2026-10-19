@@ -19,7 +19,8 @@ import {
   SlidersHorizontal,
   Bot,
   Zap,
-  Globe
+  Globe,
+  Key
 } from 'lucide-react';
 import { DashboardStats } from '@/types';
 
@@ -40,6 +41,7 @@ export type PageView =
   | 'audit'
   | 'settings'
   | 'profile'
+  | 'licenses'
   | 'admin';
 
 interface SidebarProps {
@@ -80,6 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'profile', label: 'Profile & Security', icon: UserCheck },
+    { id: 'licenses', label: '🔑 License DRM Control', icon: Key, badge: 'DRM', badgeColor: 'bg-cyan-500 text-slate-950 font-bold' },
     { id: 'admin', label: 'Admin Panel', icon: SlidersHorizontal },
   ];
 
