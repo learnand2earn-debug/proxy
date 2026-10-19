@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isAuthenticated: boolean;
-  login: (usernameOrKey: string, password?: string) => Promise<{ success: boolean; error?: string; is_concurrent_locked?: boolean }>;
+  login: (usernameOrKey: string, password?: string) => Promise<{ success: boolean; error?: string; is_concurrent_locked?: boolean; session?: AuthSession }>;
   register: (name: string, username: string, password: string, plan_type?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -120,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
         }
         setIsLoginModalOpen(false);
-        return { success: true };
+        return { success: true, session: data.session };
       }
 
       return { success: false, error: 'Unexpected login response' };

@@ -11,27 +11,31 @@ import {
   Globe, 
   Radio, 
   CheckCircle2, 
-  Sparkles,
-  Copy,
-  Check
+  X,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 
-export const LoginModal: React.FC = () => {
-  const { isLoginModalOpen, login, isAuthenticated } = useAuth();
-  const [loginMethod, setLoginMethod] = useState<'credentials' | 'key'>('credentials');
+interface LoginModalProps {
+  onLoginSuccess?: (role: 'admin' | 'user') => void;
+}
 
-  // Input states (pre-filled with admin credentials by default for convenience)
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
+  const { isLoginModalOpen, setIsLoginModalOpen, login, isAuthenticated } = useAuth();
+  
+  // Default to Commercial License Key tab (clean client portal access)
+  const [loginMethod, setLoginMethod] = useState<'key' | 'credentials'>('key');
+
+  // Input states start completely empty - no hardcoded credentials exposed
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [licenseKey, setLicenseKey] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
-  const [copiedAdmin, setCopiedAdmin] = useState(false);
 
-  // If already authenticated and modal is not forced open, don't show
+  // If already authenticated and modal is not explicitly triggered, don't show
   if (isAuthenticated && !isLoginModalOpen) {
     return null;
   }
@@ -53,7 +57,11 @@ export const LoginModal: React.FC = () => {
     }
 
     if (!identifier) {
-      setErrorMsg(loginMethod === 'key' ? 'Please enter license key' : 'Please enter username and password');
+      setErrorMsg(
+        loginMethod === 'key' 
+          ? 'Please enter your commercial license key to continue.' 
+          : 'Please enter administrator username and password.'
+      );
       setLoading(false);
       return;
     }
@@ -64,18 +72,12 @@ export const LoginModal: React.FC = () => {
       if (res.is_concurrent_locked) {
         setIsLocked(true);
       }
+    } else {
+      // Invoke role-based success handler
+      const userRole = res.session?.role || (loginMethod === 'credentials' && identifier.toLowerCase() === 'admin' ? 'admin' : 'user');
+      onLoginSuccess?.(userRole);
     }
     setLoading(false);
-  };
-
-  const handleAutoFillAdmin = () => {
-    setLoginMethod('credentials');
-    setUsername('admin');
-    setPassword('admin123');
-    setErrorMsg(null);
-    setIsLocked(false);
-    setCopiedAdmin(true);
-    setTimeout(() => setCopiedAdmin(false), 2000);
   };
 
   return (
@@ -98,135 +100,127 @@ export const LoginModal: React.FC = () => {
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Sign in with Administrator or Licensed User credentials
+                {loginMethod === 'key' 
+                  ? 'Enter commercial license key to unlock your platform'
+                  : 'Master Administrator Secure Terminal Access'}
               </p>
             </div>
           </div>
+
+          {isAuthenticated && (
+            <button
+              onClick={() => setIsLoginModalOpen(false)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#131d35] transition-all"
+              title="Close modal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}
         <div className="p-6 space-y-4">
-          {/* Admin Credentials Card */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 via-[#0e172e] to-cyan-950/30 border border-blue-500/40 text-xs">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5 text-blue-300 font-bold">
-                <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                <span>Master Admin Credentials</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleAutoFillAdmin}
-                className="text-[11px] text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all"
-              >
-                {copiedAdmin ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-400" />
-                    <span className="text-emerald-400">Filled!</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3 h-3" />
-                    <span>Auto-Fill</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 font-mono text-[11px] mt-2 pt-2 border-t border-blue-500/20">
-              <div className="bg-[#080d1b] px-2.5 py-1.5 rounded-lg border border-[#1a2540]">
-                <span className="text-slate-400 block text-[10px]">USERNAME</span>
-                <span className="text-white font-bold">admin</span>
-              </div>
-              <div className="bg-[#080d1b] px-2.5 py-1.5 rounded-lg border border-[#1a2540]">
-                <span className="text-slate-400 block text-[10px]">PASSWORD</span>
-                <span className="text-cyan-300 font-bold">admin123</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Toggle Username/Password vs License Key */}
+          {/* Method Selection Tabs */}
           <div className="grid grid-cols-2 p-1 bg-[#131d35] rounded-xl border border-[#1e2d54] text-xs">
             <button
               type="button"
-              onClick={() => setLoginMethod('credentials')}
-              className={`py-1.5 rounded-lg font-medium transition-all ${
-                loginMethod === 'credentials'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+              onClick={() => {
+                setLoginMethod('key');
+                setErrorMsg(null);
+                setIsLocked(false);
+              }}
+              className={`py-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                loginMethod === 'key'
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Username & Password
+              <Key className="w-3.5 h-3.5" />
+              <span>Customer License</span>
             </button>
             <button
               type="button"
-              onClick={() => setLoginMethod('key')}
-              className={`py-1.5 rounded-lg font-medium transition-all ${
-                loginMethod === 'key'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+              onClick={() => {
+                setLoginMethod('credentials');
+                setErrorMsg(null);
+                setIsLocked(false);
+              }}
+              className={`py-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                loginMethod === 'credentials'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Direct License Key
+              <Shield className="w-3.5 h-3.5" />
+              <span>System Admin</span>
             </button>
           </div>
 
-          <form onSubmit={handleSignIn} className="space-y-3.5">
-            {loginMethod === 'credentials' ? (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Username
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="admin"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-cyan-400 rounded-xl text-white text-xs outline-none transition-all font-mono"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="password"
-                      placeholder="admin123"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-cyan-400 rounded-xl text-white text-xs outline-none transition-all font-mono"
-                      required
-                    />
-                  </div>
-                </div>
-              </>
-            ) : (
+          <form onSubmit={handleSignIn} className="space-y-4">
+            {loginMethod === 'key' ? (
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  License Key
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Commercial License Key
                 </label>
                 <div className="relative">
                   <Key className="w-4 h-4 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="WSP-MONTHLY-XXXX-XXXX"
+                    placeholder="Enter key (e.g. WSP-MONTHLY-XXXX-XXXX)"
                     value={licenseKey}
                     onChange={(e) => setLicenseKey(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-cyan-400 rounded-xl text-white font-mono text-xs outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-cyan-400 rounded-xl text-white font-mono text-xs outline-none transition-all placeholder:text-slate-500"
                     required
+                    autoFocus
                   />
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  Paste commercial license key to unlock this domain origin.
-                </span>
+                <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Single-Site DRM binds this key strictly to your domain origin.</span>
+                </div>
               </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Administrator Username
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-blue-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Enter administrator username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-blue-400 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                    Administrator Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-blue-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-[#0f172a] border border-[#1e2d54] focus:border-blue-400 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span>Administrator session unlocks the Master DRM Management Portal.</span>
+                </div>
+              </>
             )}
 
             {/* Error or DRM Lock Alert */}
@@ -252,16 +246,20 @@ export const LoginModal: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2"
+              className={`w-full py-3 rounded-xl font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2 ${
+                loginMethod === 'key'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-cyan-950/50'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-indigo-950/50'
+              }`}
             >
               {loading ? (
                 <span className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>Authenticating...</span>
+                  <Radio className="w-4 h-4 animate-spin" />
+                  <span>Verifying Credentials...</span>
                 </span>
               ) : (
                 <>
-                  <span>Sign In & Enter Platform</span>
+                  <span>{loginMethod === 'key' ? 'Authenticate License & Enter' : 'Sign In as Administrator'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

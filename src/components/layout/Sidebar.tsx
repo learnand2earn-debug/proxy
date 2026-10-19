@@ -23,6 +23,7 @@ import {
   Key
 } from 'lucide-react';
 import { DashboardStats } from '@/types';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 export type PageView = 
   | 'overview'
@@ -52,6 +53,14 @@ interface SidebarProps {
   onOpenAI: () => void;
 }
 
+interface NavItemConfig {
+  id: PageView;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string;
+  badgeColor?: string;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
   currentView,
   onSelectView,
@@ -59,13 +68,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unreadNotificationsCount = 0,
   onOpenAI
 }) => {
-  const navItems: Array<{
-    id: PageView;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    badge?: number | string;
-    badgeColor?: string;
-  }> = [
+  const { session } = useAuth();
+  const isAdmin = session?.role === 'admin';
+
+  // Section 1: Main Dashboard
+  const mainNavItems: NavItemConfig[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'country_harvester', label: '🌍 Country Harvester', icon: Globe, badge: 'GEO', badgeColor: 'bg-cyan-500 text-slate-950 font-bold' },
     { id: 'live_stream', label: '⚡ Live Radar Stream', icon: Zap, badge: 'LIVE', badgeColor: 'bg-emerald-500 text-slate-950 font-extrabold animate-pulse' },
@@ -74,16 +81,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'inactive', label: 'Inactive Proxies', icon: Clock, badge: stats?.inactive_count, badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30' },
     { id: 'quarantined', label: 'Quarantined / Invalid', icon: AlertTriangle, badge: stats?.quarantined_count, badgeColor: 'bg-amber-500/20 text-amber-400 border border-amber-500/30' },
     { id: 'auth_required', label: 'Auth Required', icon: KeyRound, badge: stats?.auth_required_count },
+  ];
+
+  // Section 2: Discovery & Automation
+  const discoveryNavItems: NavItemConfig[] = [
     { id: 'sources', label: 'Discovery Sources', icon: Radio, badge: stats?.configured_sources_count },
     { id: 'extension', label: 'Chrome Extension', icon: Chrome },
     { id: 'schedules', label: 'Monitoring Schedules', icon: CalendarClock },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined, badgeColor: 'bg-blue-500 text-white font-bold' },
+  ];
+
+  // Section 3: Operations & System
+  const opsNavItems: NavItemConfig[] = [
     { id: 'history', label: 'Test History', icon: History },
     { id: 'audit', label: 'Audit Logs', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'profile', label: 'Profile & Security', icon: UserCheck },
-    { id: 'licenses', label: '🔑 License DRM Control', icon: Key, badge: 'DRM', badgeColor: 'bg-cyan-500 text-slate-950 font-bold' },
+  ];
+
+  // Section 4: Master Admin Panel (STRICTLY for session.role === 'admin')
+  const adminNavItems: NavItemConfig[] = [
     { id: 'admin', label: 'Admin Panel', icon: SlidersHorizontal },
+    { id: 'licenses', label: '🔑 License DRM Control', icon: Key, badge: 'DRM', badgeColor: 'bg-cyan-500 text-slate-950 font-bold' },
   ];
 
   return (
@@ -103,10 +122,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation List */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        {/* Main Dashboard Section */}
         <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Main Dashboard
         </div>
-        {navItems.slice(0, 8).map((item) => {
+        {mainNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -132,10 +152,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
+        {/* Discovery & Automation Section */}
         <div className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Discovery & Automation
         </div>
-        {navItems.slice(8, 12).map((item) => {
+        {discoveryNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -161,10 +182,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
 
+        {/* Operations & System Section */}
         <div className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Operations & System
         </div>
-        {navItems.slice(12).map((item) => {
+        {opsNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -189,6 +211,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           );
         })}
+
+        {/* Master Admin Section (Restricted strictly to Administrator role) */}
+        {isAdmin && (
+          <>
+            <div className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+              <span>Master Admin Portal</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                ROOT
+              </span>
+            </div>
+            {adminNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onSelectView(item.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                    isActive
+                      ? 'bg-gradient-to-r from-blue-600/30 to-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-[#131d35]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== undefined && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.badgeColor || 'bg-[#172342] text-slate-300'}`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* AI Assistant Button in Sidebar */}

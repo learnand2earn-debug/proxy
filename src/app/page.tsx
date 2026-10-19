@@ -30,6 +30,7 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { DashboardStats, ProxyRecord } from '@/types';
 
 function DashboardContent() {
+  const { session } = useAuth();
   const [currentView, setCurrentView] = useState<PageView>('overview');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [proxies, setProxies] = useState<ProxyRecord[]>([]);
@@ -42,6 +43,21 @@ function DashboardContent() {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [inspectProxy, setInspectProxy] = useState<ProxyRecord | null>(null);
+
+  // Role-based portal navigation:
+  // When Admin logs in, land directly on Admin Panel ('admin').
+  // When regular licensed client logs in, ensure they stay on client portal ('overview') and cannot access admin/licenses views.
+  useEffect(() => {
+    if (session) {
+      if (session.role === 'admin') {
+        setCurrentView('admin');
+      } else {
+        if (currentView === 'admin' || currentView === 'licenses') {
+          setCurrentView('overview');
+        }
+      }
+    }
+  }, [session?.user_id, session?.role]);
 
   // Fetch telemetry & data
   const fetchData = useCallback(() => {
@@ -99,6 +115,10 @@ function DashboardContent() {
       <Sidebar
         currentView={currentView}
         onSelectView={(v) => {
+          if ((v === 'admin' || v === 'licenses') && session?.role !== 'admin') {
+            setCurrentView('overview');
+            return;
+          }
           setCurrentView(v);
           setPage(1);
         }}
@@ -332,10 +352,30 @@ function DashboardContent() {
           {currentView === 'settings' && <SettingsView />}
           {currentView === 'profile' && <ProfileView />}
           {currentView === 'licenses' && (
-            <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
+            session?.role === 'admin' ? (
+              <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
+            ) : (
+              <div className="p-8 text-center bg-rose-950/20 border border-rose-500/30 rounded-2xl max-w-lg mx-auto mt-10">
+                <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto mb-3 text-rose-400 font-bold">
+                  🛡️
+                </div>
+                <h3 className="text-base font-bold text-white">Administrator Access Required</h3>
+                <p className="text-xs text-slate-400 mt-1">This section is restricted to Master System Administrators only.</p>
+              </div>
+            )
           )}
           {currentView === 'admin' && (
-            <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
+            session?.role === 'admin' ? (
+              <AdminView stats={stats} onRefreshData={fetchData} defaultTab="licenses" />
+            ) : (
+              <div className="p-8 text-center bg-rose-950/20 border border-rose-500/30 rounded-2xl max-w-lg mx-auto mt-10">
+                <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto mb-3 text-rose-400 font-bold">
+                  🛡️
+                </div>
+                <h3 className="text-base font-bold text-white">Administrator Access Required</h3>
+                <p className="text-xs text-slate-400 mt-1">This section is restricted to Master System Administrators only.</p>
+              </div>
+            )
           )}
         </main>
       </div>
@@ -366,7 +406,15 @@ function DashboardContent() {
       />
 
       {/* DRM AUTHENTICATION GATE MODAL */}
-      <LoginModal />
+      <LoginModal 
+        onLoginSuccess={(role) => {
+          if (role === 'admin') {
+            setCurrentView('admin');
+          } else {
+            setCurrentView('overview');
+          }
+        }}
+      />
     </div>
   );
 }
