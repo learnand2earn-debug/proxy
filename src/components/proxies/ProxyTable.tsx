@@ -28,6 +28,7 @@ import {
   Zap
 } from 'lucide-react';
 import { maskEndpoint } from '@/lib/validation/parser';
+import { POPULAR_COUNTRIES, ALL_COUNTRIES, getCountryInfo } from '@/lib/constants/countries';
 
 const getFlagEmoji = (countryCode?: string) => {
   if (!countryCode || countryCode === 'XX') return '🌐';
@@ -66,6 +67,7 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || 'ALL');
   const [protocolFilter, setProtocolFilter] = useState<string>('ALL');
+  const [countryFilter, setCountryFilter] = useState<string>('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [checkingIds, setCheckingIds] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -234,12 +236,14 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
   const filteredList = proxies.filter(p => {
     if (statusFilter !== 'ALL' && p.current_status !== statusFilter) return false;
     if (protocolFilter !== 'ALL' && p.protocol !== protocolFilter) return false;
+    if (countryFilter !== 'ALL' && (p.country_code || '').toUpperCase() !== countryFilter.toUpperCase()) return false;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
         p.normalized_endpoint.toLowerCase().includes(q) ||
         p.host.toLowerCase().includes(q) ||
         p.port.toString().includes(q) ||
+        (p.country_code && p.country_code.toLowerCase().includes(q)) ||
         (p.source_name && p.source_name.toLowerCase().includes(q)) ||
         (p.last_failure_reason && p.last_failure_reason.toLowerCase().includes(q))
       );
@@ -268,6 +272,26 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
 
         {/* Filter dropdowns */}
         <div className="flex items-center gap-2">
+          {/* Country Filter */}
+          <select
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+            className="bg-[#131d35] border border-[#1e2d54] rounded-lg text-xs text-slate-300 px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium"
+          >
+            <option value="ALL">🌐 All Countries</option>
+            {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name} ({c.code})
+              </option>
+            ))}
+            <option disabled>──────────</option>
+            {ALL_COUNTRIES.filter(c => !POPULAR_COUNTRIES.some(p => p.code === c.code)).map(c => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name} ({c.code})
+              </option>
+            ))}
+          </select>
+
           {!initialStatusFilter && (
             <select
               value={statusFilter}

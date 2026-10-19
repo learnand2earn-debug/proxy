@@ -26,7 +26,8 @@ import {
   TrendingUp,
   Cpu
 } from 'lucide-react';
-import { LiveDiscoveredProxy } from '@/lib/discovery/live_stream';
+import type { LiveDiscoveredProxy } from '@/lib/discovery/live_stream';
+import { POPULAR_COUNTRIES, ALL_COUNTRIES, getCountryInfo, CountryMeta } from '@/lib/constants/countries';
 import { ProxyProtocol } from '@/types';
 
 interface LiveStreamRadarViewProps {
@@ -41,6 +42,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [streamSpeed, setStreamSpeed] = useState<'normal' | 'fast' | 'turbo'>('fast');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
+  const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [autoIngest, setAutoIngest] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   
@@ -52,6 +54,8 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
 
   const [isBulkIngesting, setIsBulkIngesting] = useState(false);
   const [bulkIngestFeedback, setBulkIngestFeedback] = useState<string | null>(null);
+
+  const activeCountryMeta: CountryMeta = getCountryInfo(selectedCountry);
 
   // Audio Context for subtle sound cue on live stream
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -81,12 +85,15 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     }
   }, [soundEnabled]);
 
-  // Connect to SSE Stream
+  // Connect to SSE Stream (filtered by country & protocol)
   useEffect(() => {
     if (!isPlaying) return;
 
+    // Reset buffer when country changes
+    setStreamedProxies([]);
+
     let eventSource: EventSource | null = null;
-    const url = `/api/stream/live?speed=${streamSpeed}&protocol=${protocolFilter}&auto_ingest=${autoIngest}`;
+    const url = `/api/stream/live?speed=${streamSpeed}&protocol=${protocolFilter}&auto_ingest=${autoIngest}&country=${selectedCountry}`;
 
     try {
       eventSource = new EventSource(url);
@@ -133,9 +140,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
         eventSource.close();
       }
     };
-  }, [isPlaying, streamSpeed, protocolFilter, autoIngest, playBeep]);
+  }, [isPlaying, streamSpeed, protocolFilter, autoIngest, selectedCountry, playBeep]);
 
-  // Instant Bulk Ingest Button (100 proxies)
+  // Instant Bulk Ingest Button (100 proxies of the selected country)
   const handleBulkIngestNow = async () => {
     setIsBulkIngesting(true);
     setBulkIngestFeedback(null);
@@ -143,11 +150,15 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       const res = await fetch('/api/stream/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 100 })
+        body: JSON.stringify({
+          count: 100,
+          country: selectedCountry !== 'ALL' ? selectedCountry : undefined
+        })
       });
       const data = await res.json();
       if (data.success) {
-        setBulkIngestFeedback(`+${data.inserted} New Real Proxies Ingested! (${data.duplicates} Duplicates skipped)`);
+        const countryLabel = selectedCountry !== 'ALL' ? `${activeCountryMeta.flag} ${activeCountryMeta.name}` : 'Real Global';
+        setBulkIngestFeedback(`+${data.inserted} New ${countryLabel} Proxies Ingested! (${data.duplicates} Duplicates skipped)`);
         if (onProxyIngested) onProxyIngested();
         setTimeout(() => setBulkIngestFeedback(null), 5000);
       } else {
@@ -295,7 +306,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-lg shadow-cyan-500/20 transition-all disabled:opacity-50"
             >
               <Zap className={`w-4 h-4 ${isBulkIngesting ? 'animate-spin' : ''}`} />
-              {isBulkIngesting ? 'Harvesting Feeds...' : '⚡ Ingest 100 Live Now'}
+              {isBulkIngesting 
+                ? `Harvesting ${activeCountryMeta.name}...` 
+                : `⚡ Ingest 100 ${activeCountryMeta.flag} Live Now`}
             </button>
 
             <div className="flex items-center bg-[#131d35] border border-[#1f2e52] rounded-xl p-1">
@@ -317,6 +330,70 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             {bulkIngestFeedback}
           </div>
         )}
+      </div>
+
+      {/* Target Country Selection Command Bar */}
+      <div className="bg-[#0c1324] border border-[#1a2745] rounded-xl p-4 shadow-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Globe className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider">
+              Target Country:
+            </span>
+            <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              {activeCountryMeta.flag} {activeCountryMeta.name} ({activeCountryMeta.code})
+            </span>
+            <span className="text-[11px] text-slate-400 hidden md:inline">
+              — Radar only finds & streams proxies for this country
+            </span>
+          </div>
+
+          {/* All Countries dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-semibold">Select Country:</span>
+            <select
+              value={selectedCountry}
+              onChange={(e) => setSelectedCountry(e.target.value)}
+              className="bg-[#141e36] border border-[#223359] text-white text-xs rounded-lg px-3 py-1.5 font-medium focus:outline-none focus:border-cyan-400 cursor-pointer"
+            >
+              <option value="ALL">🌐 All Countries (Global)</option>
+              <option disabled>── Top Countries ──</option>
+              {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name} ({c.code})
+                </option>
+              ))}
+              <option disabled>── All Countries ──</option>
+              {ALL_COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Quick chips */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Quick Select:</span>
+          {POPULAR_COUNTRIES.map(c => {
+            const isSelected = selectedCountry === c.code;
+            return (
+              <button
+                key={c.code}
+                onClick={() => setSelectedCountry(c.code)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                    : 'bg-[#121c33] text-slate-300 hover:text-white hover:bg-[#192747] border border-[#1e2e54]'
+                }`}
+              >
+                <span>{c.flag}</span>
+                <span>{c.name.split(' ')[0]}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Real-time Telemetry Stat Gauges */}

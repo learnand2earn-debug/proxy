@@ -11,6 +11,7 @@ export async function GET(request: Request) {
     const protocol = searchParams.get('protocol') as ProxyProtocol | undefined;
     const source_id = searchParams.get('source_id') || undefined;
     const search = searchParams.get('search') || undefined;
+    const country = searchParams.get('country') || searchParams.get('country_code') || undefined;
     const is_quarantined = searchParams.has('is_quarantined') 
       ? searchParams.get('is_quarantined') === 'true' 
       : undefined;
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
       protocol: protocol || undefined,
       source_id,
       search,
+      country_code: country,
       is_quarantined,
       page,
       limit,

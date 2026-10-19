@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Download, FileSpreadsheet, FileJson, FileText, Lock } from 'lucide-react';
+import { X, Download, FileSpreadsheet, FileJson, FileText, Lock, Globe } from 'lucide-react';
 import { ProxyStatus } from '@/types';
+import { POPULAR_COUNTRIES, ALL_COUNTRIES } from '@/lib/constants/countries';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ExportModalProps {
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
   const [format, setFormat] = useState<'csv' | 'json' | 'txt'>('csv');
   const [status, setStatus] = useState<string>('ALL');
+  const [country, setCountry] = useState<string>('ALL');
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -22,6 +24,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     let url = `/api/proxies/export?format=${format}`;
     if (status !== 'ALL') {
       url += `&status=${status}`;
+    }
+    if (country !== 'ALL') {
+      url += `&country=${country}`;
     }
     if (includeCredentials) {
       url += `&include_credentials=true`;
@@ -103,6 +108,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                 <span className="text-xs">TXT List</span>
               </button>
             </div>
+          </div>
+
+          {/* Country Filter */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Target Country Filter</span>
+            </label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="w-full bg-[#131d35] border border-[#1e2d54] rounded-lg p-2.5 text-xs text-white"
+            >
+              <option value="ALL">🌐 All Countries (Global Export)</option>
+              <option disabled>── Popular Countries ──</option>
+              {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name} ({c.code})
+                </option>
+              ))}
+              <option disabled>── All Countries ──</option>
+              {ALL_COUNTRIES.map(c => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Status Filter */}

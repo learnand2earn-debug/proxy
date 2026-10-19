@@ -490,6 +490,7 @@ class Repository {
     protocol?: ProxyProtocol;
     source_id?: string;
     search?: string;
+    country_code?: string;
     is_quarantined?: boolean;
     page?: number;
     limit?: number;
@@ -514,6 +515,11 @@ class Repository {
       list = list.filter(p => p.source_id === filters.source_id);
     }
 
+    if (filters.country_code && filters.country_code !== 'ALL') {
+      const c = filters.country_code.toUpperCase();
+      list = list.filter(p => p.country_code && p.country_code.toUpperCase() === c);
+    }
+
     if (filters.is_quarantined !== undefined) {
       list = list.filter(p => p.is_quarantined === filters.is_quarantined);
     }
@@ -525,6 +531,7 @@ class Repository {
         p.host.toLowerCase().includes(q) ||
         p.port.toString().includes(q) ||
         p.protocol.toLowerCase().includes(q) ||
+        (p.country_code && p.country_code.toLowerCase().includes(q)) ||
         (p.source_name && p.source_name.toLowerCase().includes(q)) ||
         (p.last_failure_reason && p.last_failure_reason.toLowerCase().includes(q))
       );

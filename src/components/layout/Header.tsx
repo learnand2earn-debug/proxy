@@ -38,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const viewTitles: Record<PageView, { title: string; subtitle: string }> = {
     overview: { title: 'Executive Overview', subtitle: 'Live telemetry, latency performance, and inventory health' },
+    country_harvester: { title: '🌍 Targeted Country Proxy Harvester', subtitle: 'Choose any nation (Pakistan, India, USA, etc.) to extract and verify proxies exclusive to that country' },
     live_stream: { title: '⚡ Autonomous Real-Time Ingestion Radar', subtitle: 'Continuous live stream pipeline with nanosecond verification and zero fake data' },
     all_proxies: { title: 'Proxy Inventory', subtitle: 'Complete registry of all discovered and configured endpoints' },
     active: { title: 'Active Endpoints', subtitle: 'Verified high-uptime proxies passing diagnostic probes' },

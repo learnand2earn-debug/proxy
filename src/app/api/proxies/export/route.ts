@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const format = (searchParams.get('format') || 'csv').toLowerCase(); // csv | json | txt
     const status = searchParams.get('status') as ProxyStatus | undefined;
+    const country = searchParams.get('country') || searchParams.get('country_code') || undefined;
     const is_quarantined = searchParams.has('is_quarantined') 
       ? searchParams.get('is_quarantined') === 'true' 
       : undefined;
@@ -16,11 +17,12 @@ export async function GET(request: Request) {
     const { data: proxies } = repo.getProxies({
       owner_id: DEFAULT_OWNER_ID,
       status: status || undefined,
+      country_code: country,
       is_quarantined,
       limit: 10000
     });
 
-    const filename = `proxy_inventory_${status || 'all'}_${Date.now()}`;
+    const filename = `proxy_inventory_${country || 'all'}_${status || 'all'}_${Date.now()}`;
 
     // TXT Format: host:port per line
     if (format === 'txt') {

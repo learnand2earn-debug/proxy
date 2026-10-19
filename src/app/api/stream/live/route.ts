@@ -8,14 +8,21 @@ export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const autoIngest = searchParams.get('auto_ingest') === 'true';
   const filterProtocol = searchParams.get('protocol') || 'all';
+  const filterCountry = (searchParams.get('country') || 'ALL').trim().toUpperCase();
   const speed = searchParams.get('speed') || 'normal';
 
   // Interval in ms based on speed
   const intervalMs = speed === 'turbo' ? 200 : speed === 'fast' ? 450 : 800;
 
-  let buffer = await getLiveProxyStreamBuffer();
+  const matchesFilters = (p: LiveDiscoveredProxy) => {
+    const matchProto = filterProtocol === 'all' || p.protocol === filterProtocol;
+    const matchCountry = filterCountry === 'ALL' || (p.country_code && p.country_code.toUpperCase() === filterCountry);
+    return matchProto && matchCountry;
+  };
+
+  let buffer = await getLiveProxyStreamBuffer(filterCountry);
   if (buffer.length === 0) {
-    buffer = await fetchLivePublicFeeds(200);
+    buffer = await fetchLivePublicFeeds(200, filterCountry);
   }
 
   let index = 0;
@@ -25,9 +32,9 @@ export async function GET(req: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      // Send initial burst of 10 real proxies
+      // Send initial burst of matching real proxies
       const initialBurst = buffer
-        .filter(p => filterProtocol === 'all' || p.protocol === filterProtocol)
+        .filter(matchesFilters)
         .slice(0, 12);
 
       controller.enqueue(encoder.encode(`event: initial_burst\ndata: ${JSON.stringify(initialBurst)}\n\n`));
@@ -41,8 +48,8 @@ export async function GET(req: NextRequest) {
 
         try {
           if (buffer.length === 0 || index >= buffer.length) {
-            // Refill buffer
-            buffer = await fetchLivePublicFeeds(150);
+            // Refill buffer for this country
+            buffer = await fetchLivePublicFeeds(150, filterCountry);
             index = 0;
           }
 
@@ -55,7 +62,7 @@ export async function GET(req: NextRequest) {
             const p = buffer[index % buffer.length];
             index++;
             attempts++;
-            if (filterProtocol === 'all' || p.protocol === filterProtocol) {
+            if (matchesFilters(p)) {
               candidate = p;
               break;
             }

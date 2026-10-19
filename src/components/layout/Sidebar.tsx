@@ -18,12 +18,14 @@ import {
   UserCheck, 
   SlidersHorizontal,
   Bot,
-  Zap
+  Zap,
+  Globe
 } from 'lucide-react';
 import { DashboardStats } from '@/types';
 
 export type PageView = 
   | 'overview'
+  | 'country_harvester'
   | 'live_stream'
   | 'all_proxies'
   | 'active'
@@ -63,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badgeColor?: string;
   }> = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'country_harvester', label: '🌍 Country Harvester', icon: Globe, badge: 'GEO', badgeColor: 'bg-cyan-500 text-slate-950 font-bold' },
     { id: 'live_stream', label: '⚡ Live Radar Stream', icon: Zap, badge: 'LIVE', badgeColor: 'bg-emerald-500 text-slate-950 font-extrabold animate-pulse' },
     { id: 'all_proxies', label: 'All Proxies', icon: Layers, badge: stats?.total_discovered },
     { id: 'active', label: 'Active Proxies', icon: CheckCircle2, badge: stats?.active_count, badgeColor: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' },
@@ -100,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Main Dashboard
         </div>
-        {navItems.slice(0, 7).map((item) => {
+        {navItems.slice(0, 8).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -129,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Discovery & Automation
         </div>
-        {navItems.slice(7, 11).map((item) => {
+        {navItems.slice(8, 12).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -158,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-3 pt-4 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
           Operations & System
         </div>
-        {navItems.slice(11).map((item) => {
+        {navItems.slice(12).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
