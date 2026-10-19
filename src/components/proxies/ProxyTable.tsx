@@ -29,17 +29,8 @@ import {
 } from 'lucide-react';
 import { maskEndpoint } from '@/lib/validation/parser';
 import { POPULAR_COUNTRIES, ALL_COUNTRIES, getCountryInfo } from '@/lib/constants/countries';
+import { CountryFlag } from '@/components/common/CountryFlag';
 
-const getFlagEmoji = (countryCode?: string) => {
-  if (!countryCode || countryCode === 'XX') return '🌐';
-  try {
-    const code = countryCode.toUpperCase();
-    if (code.length === 2) {
-      return String.fromCodePoint(...code.split('').map(c => 127397 + c.charCodeAt(0)));
-    }
-  } catch {}
-  return '🌐';
-};
 
 interface ProxyTableProps {
   proxies: ProxyRecord[];
@@ -281,13 +272,13 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
             <option value="ALL">🌐 All Countries</option>
             {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.name} ({c.code})
+                {c.name} ({c.code})
               </option>
             ))}
             <option disabled>──────────</option>
             {ALL_COUNTRIES.filter(c => !POPULAR_COUNTRIES.some(p => p.code === c.code)).map(c => (
               <option key={c.code} value={c.code}>
-                {c.flag} {c.name} ({c.code})
+                {c.name} ({c.code})
               </option>
             ))}
           </select>
@@ -447,8 +438,8 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
                         </button>
                       </div>
                       <div className="text-[10px] text-slate-400 font-sans mt-0.5 flex items-center gap-2">
-                        <span className="flex items-center gap-1 font-semibold text-slate-200">
-                          <span className="text-sm leading-none">{getFlagEmoji(p.country_code)}</span>
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                          <CountryFlag code={p.country_code} size="xs" />
                           <span>{p.country_code || 'US'}</span>
                         </span>
                         <span>•</span>

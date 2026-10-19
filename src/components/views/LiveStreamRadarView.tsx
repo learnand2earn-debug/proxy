@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { LiveDiscoveredProxy } from '@/lib/discovery/live_stream';
 import { POPULAR_COUNTRIES, ALL_COUNTRIES, getCountryInfo, CountryMeta } from '@/lib/constants/countries';
+import { CountryFlag } from '@/components/common/CountryFlag';
 import { ProxyProtocol } from '@/types';
 
 interface LiveStreamRadarViewProps {
@@ -157,7 +158,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        const countryLabel = selectedCountry !== 'ALL' ? `${activeCountryMeta.flag} ${activeCountryMeta.name}` : 'Real Global';
+        const countryLabel = selectedCountry !== 'ALL' ? activeCountryMeta.name : 'Real Global';
         setBulkIngestFeedback(`+${data.inserted} New ${countryLabel} Proxies Ingested! (${data.duplicates} Duplicates skipped)`);
         if (onProxyIngested) onProxyIngested();
         setTimeout(() => setBulkIngestFeedback(null), 5000);
@@ -308,7 +309,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               <Zap className={`w-4 h-4 ${isBulkIngesting ? 'animate-spin' : ''}`} />
               {isBulkIngesting 
                 ? `Harvesting ${activeCountryMeta.name}...` 
-                : `⚡ Ingest 100 ${activeCountryMeta.flag} Live Now`}
+                : `⚡ Ingest 100 ${activeCountryMeta.name} Live Now`}
             </button>
 
             <div className="flex items-center bg-[#131d35] border border-[#1f2e52] rounded-xl p-1">
@@ -340,8 +341,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             <span className="text-xs font-bold text-white uppercase tracking-wider">
               Target Country:
             </span>
-            <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              {activeCountryMeta.flag} {activeCountryMeta.name} ({activeCountryMeta.code})
+            <span className="px-2.5 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 inline-flex items-center gap-1.5">
+              <CountryFlag code={activeCountryMeta.code} size="xs" />
+              <span>{activeCountryMeta.name} [{activeCountryMeta.code}]</span>
             </span>
             <span className="text-[11px] text-slate-400 hidden md:inline">
               — Radar only finds & streams proxies for this country
@@ -360,13 +362,13 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               <option disabled>── Top Countries ──</option>
               {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
               <option disabled>── All Countries ──</option>
               {ALL_COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
             </select>
@@ -388,7 +390,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                     : 'bg-[#121c33] text-slate-300 hover:text-white hover:bg-[#192747] border border-[#1e2e54]'
                 }`}
               >
-                <span>{c.flag}</span>
+                <CountryFlag code={c.code} size="xs" />
                 <span>{c.name.split(' ')[0]}</span>
               </button>
             );
@@ -604,11 +606,15 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                   {/* Left: Geo, Endpoint, Protocol */}
                   <div className="flex items-center gap-4">
                     {/* Country Flag & Code */}
-                    <div className="flex items-center gap-2 w-28">
-                      <span className="text-xl leading-none">{proxy.flag || '🌐'}</span>
-                      <div>
-                        <div className="text-xs font-bold text-white">{proxy.country_code}</div>
-                        <div className="text-[10px] text-slate-400 truncate max-w-[85px]">{proxy.city || proxy.country_name}</div>
+                    <div className="flex items-center gap-2.5 w-36">
+                      <CountryFlag code={proxy.country_code} size="md" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white truncate max-w-[105px]">
+                          {proxy.city || proxy.country_name || getCountryInfo(proxy.country_code).name}
+                        </div>
+                        <div className="text-[10px] text-cyan-400 font-mono font-bold">
+                          [{proxy.country_code}]
+                        </div>
                       </div>
                     </div>
 

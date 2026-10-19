@@ -26,6 +26,7 @@ import {
   getCountryInfo, 
   CountryMeta 
 } from '@/lib/constants/countries';
+import { CountryFlag } from '@/components/common/CountryFlag';
 import type { LiveDiscoveredProxy } from '@/lib/discovery/live_stream';
 import { ProxyProtocol } from '@/types';
 
@@ -61,6 +62,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
 
   // Auto-harvest on initial mount or when country explicitly selected
   const harvestCountryProxies = async (countryCode: string = selectedCountry) => {
+    const targetInfo = getCountryInfo(countryCode);
     setIsHarvesting(true);
     setHarvestFeedback(null);
     try {
@@ -75,37 +77,39 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
       const data = await res.json();
 
       if (data.success) {
-        // Fetch fresh stream buffer for this country to display
-        const bufferRes = await fetch(`/api/stream/live?speed=turbo&protocol=${protocolFilter}&country=${countryCode}`);
-        // Let's get the buffer by querying stream live burst or fetching
-        // We can also trigger a direct fetch
-        setHarvestFeedback(`Successfully harvested ${data.discovered} authentic ${currentCountryInfo.name} proxies! (${data.inserted} newly added to database)`);
+        setHarvestFeedback(`Successfully harvested ${data.discovered} authentic ${targetInfo.name} proxies! (${data.inserted} newly added to database)`);
         if (onProxyIngested) onProxyIngested();
       } else {
         setHarvestFeedback('Harvest error: ' + (data.error || 'Failed'));
       }
 
       // Also fetch live buffer to populate the view's list
-      // We can fetch from /api/proxies with country_code filter!
+      // We query /api/proxies with country filter
       const inventoryRes = await fetch(`/api/proxies?country=${countryCode}&limit=${requestedCount}`);
       const invData = await inventoryRes.json();
       if (invData.data && invData.data.length > 0) {
-        const mapped: LiveDiscoveredProxy[] = invData.data.map((p: any) => ({
-          ip: p.host,
-          port: p.port,
-          protocol: p.protocol,
-          normalized_endpoint: p.normalized_endpoint,
-          country_code: p.country_code || countryCode,
-          country_name: currentCountryInfo.name,
-          flag: currentCountryInfo.flag,
-          city: '',
-          anonymity: p.anonymity || 'elite',
-          latency_ms: p.last_latency_ms || 85,
-          source: p.source_name || 'Country Targeted Ingestion',
-          verified_active: p.current_status === 'ACTIVE',
-          timestamp: p.created_at || new Date().toISOString()
-        }));
+        const mapped: LiveDiscoveredProxy[] = invData.data.map((p: any) => {
+          const cCode = p.country_code || countryCode;
+          const pInfo = getCountryInfo(cCode);
+          return {
+            ip: p.host,
+            port: p.port,
+            protocol: p.protocol,
+            normalized_endpoint: p.normalized_endpoint,
+            country_code: pInfo.code,
+            country_name: pInfo.name,
+            flag: pInfo.flag,
+            city: p.city || '',
+            anonymity: p.anonymity || 'elite',
+            latency_ms: p.last_latency_ms || 85,
+            source: p.source_name || `Targeted ${pInfo.name} Feed`,
+            verified_active: p.current_status === 'ACTIVE',
+            timestamp: p.created_at || new Date().toISOString()
+          };
+        });
         setHarvestedProxies(mapped);
+      } else {
+        setHarvestedProxies([]);
       }
     } catch (err: any) {
       setHarvestFeedback('Error during country harvest: ' + err.message);
@@ -121,6 +125,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
 
   const handleCountrySelect = (code: string) => {
     setSelectedCountry(code);
+    setHarvestedProxies([]);
     harvestCountryProxies(code);
   };
 
@@ -220,7 +225,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
 
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="flex h-3 w-3 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
@@ -229,13 +234,14 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 <Globe className="w-4 h-4" />
                 TARGETED GEO PROXY HARVESTER
               </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                ACTIVE TARGET: {currentCountryInfo.flag} {currentCountryInfo.name.toUpperCase()}
+              <span className="px-2.5 py-1 rounded text-[11px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-2">
+                <CountryFlag code={currentCountryInfo.code} size="xs" />
+                <span>ACTIVE TARGET: {currentCountryInfo.name.toUpperCase()} [{currentCountryInfo.code}]</span>
               </span>
             </div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight mt-1 flex items-center gap-3">
+              <CountryFlag code={currentCountryInfo.code} size="lg" />
               <span>Extract & Scrape {currentCountryInfo.name} Proxies</span>
-              <span className="text-3xl">{currentCountryInfo.flag}</span>
             </h1>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
               Choose any country in the world (Pakistan, India, USA, etc.) to immediately scrape and stream authentic live proxies exclusive to that region with instant TCP health verification.
@@ -250,10 +256,11 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               className="flex items-center gap-2 px-5 py-3 rounded-xl font-extrabold text-xs bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-lg shadow-cyan-500/25 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               <Zap className={`w-4 h-4 ${isHarvesting ? 'animate-spin' : 'fill-current'}`} />
+              <CountryFlag code={currentCountryInfo.code} size="xs" />
               <span>
                 {isHarvesting 
                   ? `Harvesting ${currentCountryInfo.name}...` 
-                  : `⚡ Find ${currentCountryInfo.flag} ${currentCountryInfo.name} Proxies Now`}
+                  : `Find ${currentCountryInfo.name} Proxies Now`}
               </span>
             </button>
           </div>
@@ -293,13 +300,13 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               <option disabled>── Popular Countries ──</option>
               {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
               <option disabled>── All 200+ Nations ──</option>
               {ALL_COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
             </select>
@@ -318,13 +325,13 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 <button
                   key={c.code}
                   onClick={() => handleCountrySelect(c.code)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30 border border-cyan-400'
                       : 'bg-[#121c33] text-slate-300 hover:text-white hover:bg-[#182645] border border-[#1f2f54]'
                   }`}
                 >
-                  <span className="text-base leading-none">{c.flag}</span>
+                  <CountryFlag code={c.code} size="sm" />
                   <span>{c.name}</span>
                 </button>
               );
@@ -410,7 +417,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
       <div className="bg-[#0a0f1d] border border-[#19243f] rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b border-[#19243f] flex flex-wrap items-center justify-between gap-3 bg-[#0e162b]/80">
           <div className="flex items-center gap-2.5">
-            <span className="text-xl leading-none">{currentCountryInfo.flag}</span>
+            <CountryFlag code={currentCountryInfo.code} size="md" />
             <div>
               <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
                 <span>{currentCountryInfo.name} Live Proxies Inventory</span>
@@ -440,8 +447,9 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             {isHarvesting ? (
               <>
                 <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
-                <div className="text-sm font-semibold text-slate-200">
-                  Harvesting authentic {currentCountryInfo.flag} {currentCountryInfo.name} proxies...
+                <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-200">
+                  <CountryFlag code={currentCountryInfo.code} size="xs" />
+                  <span>Harvesting authentic {currentCountryInfo.name} proxies...</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
                   Querying GeoNode API, ProxyScrape feeds, and global proxy mirrors
@@ -458,9 +466,10 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 </div>
                 <button
                   onClick={() => harvestCountryProxies(selectedCountry)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg transition-all"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg transition-all inline-flex items-center gap-2 cursor-pointer"
                 >
-                  ⚡ Harvest {currentCountryInfo.flag} {currentCountryInfo.name} Proxies Now
+                  <CountryFlag code={currentCountryInfo.code} size="xs" />
+                  <span>⚡ Harvest {currentCountryInfo.name} Proxies Now</span>
                 </button>
               </>
             )}
@@ -479,11 +488,15 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 >
                   {/* Left: Geo, Protocol, Host & Port */}
                   <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 w-28">
-                      <span className="text-xl leading-none">{proxy.flag || currentCountryInfo.flag}</span>
-                      <div>
-                        <div className="text-xs font-bold text-white">{proxy.country_code || currentCountryInfo.code}</div>
-                        <div className="text-[10px] text-slate-400 truncate max-w-[85px]">{proxy.country_name || currentCountryInfo.name}</div>
+                    <div className="flex items-center gap-2.5 w-36">
+                      <CountryFlag code={proxy.country_code} size="md" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white truncate max-w-[105px]">
+                          {proxy.country_name || getCountryInfo(proxy.country_code).name}
+                        </div>
+                        <div className="text-[10px] text-cyan-400 font-mono font-bold">
+                          [{proxy.country_code}]
+                        </div>
                       </div>
                     </div>
 

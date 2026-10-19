@@ -125,13 +125,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               <option disabled>── Popular Countries ──</option>
               {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
               <option disabled>── All Countries ──</option>
               {ALL_COUNTRIES.map(c => (
                 <option key={c.code} value={c.code}>
-                  {c.flag} {c.name} ({c.code})
+                  {c.name} ({c.code})
                 </option>
               ))}
             </select>
