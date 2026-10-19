@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AI Proxy Intelligence, Discovery & Monitoring Platform',
-  description: 'Enterprise-grade proxy inventory, health verification, SSRF protection, inactive recovery monitoring, and browser extension companion.',
+  title: 'WebsiteSpark - Autonomous Proxy Intelligence & DRM Engine',
+  description: 'Enterprise proxy discovery, continuous nanosecond health diagnostics, targeted country harvesting, and single-site DRM licensing.',
 };
 
 export default function RootLayout({

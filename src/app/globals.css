@@ -50,3 +50,101 @@
 .table-row-hover:hover {
   background-color: rgba(30, 45, 84, 0.4);
 }
+
+/* WebsiteSpark Dynamic Animations */
+@keyframes spark-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(4deg);
+  }
+}
+
+@keyframes spark-float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(10px) rotate(-3deg);
+  }
+}
+
+@keyframes spark-glow-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    filter: blur(40px);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    filter: blur(55px);
+    transform: scale(1.15);
+  }
+}
+
+@keyframes spark-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes spark-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spark-twinkle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes spark-border-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-spark-float {
+  animation: spark-float 6s ease-in-out infinite;
+}
+
+.animate-spark-float-reverse {
+  animation: spark-float-reverse 7s ease-in-out infinite;
+}
+
+.animate-spark-glow-pulse {
+  animation: spark-glow-pulse 4s ease-in-out infinite;
+}
+
+.animate-spark-rotate {
+  animation: spark-rotate 12s linear infinite;
+}
+
+.animate-spark-twinkle {
+  animation: spark-twinkle 3s ease-in-out infinite;
+}
+
+.animate-spark-border-flow {
+  background-size: 200% 200%;
+  animation: spark-border-flow 4s ease infinite;
+}

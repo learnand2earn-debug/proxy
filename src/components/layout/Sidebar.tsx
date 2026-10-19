@@ -110,12 +110,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="h-16 px-5 border-b border-[#1a2540] flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center shadow-glow-sm">
-            <Radio className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-glow-sm">
+            <Zap className="w-5 h-5 text-white animate-pulse" />
           </div>
           <div>
-            <div className="font-bold text-sm tracking-wide text-white">ProxyIntel.AI</div>
-            <div className="text-[10px] text-slate-400 font-medium">Enterprise Monitoring</div>
+            <div className="font-bold text-sm tracking-wide text-white">WebsiteSpark</div>
+            <div className="text-[10px] text-cyan-400 font-medium font-mono">DRM Protected</div>
           </div>
         </div>
       </div>
