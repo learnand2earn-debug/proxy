@@ -455,63 +455,18 @@ function initializeSeedData(): DBState {
 export function getInitialSeedLicenses(): LicenseRecord[] {
   return [
     {
-      id: 'lic-101',
-      license_key: 'WSP-LIFETIME-GOLD-7788',
-      customer_name: 'Apex Data Labs Enterprise',
-      customer_username: 'apex_vip',
-      password: 'ApexPassword123!',
+      id: 'lic-master-001',
+      license_key: 'WSP-LIFETIME-MASTER-0001',
+      customer_name: 'Primary System Operator',
+      customer_username: 'operator',
+      password: 'OperatorPassword2026!',
       plan_type: 'lifetime',
       status: 'ACTIVE',
-      created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
+      created_at: new Date().toISOString(),
       expires_at: new Date('2099-12-31T23:59:59Z').toISOString(),
       max_concurrent_sites: 1,
-      active_origin: 'http://localhost:3000',
-      active_session_token: 'wsp_sess_apex_initial',
-      last_active_at: new Date(Date.now() - 60000).toISOString(),
-      total_logins: 42,
-      notes: 'VIP Enterprise account with unrestricted lifetime access'
-    },
-    {
-      id: 'lic-102',
-      license_key: 'WSP-ANNUAL-9201-4432',
-      customer_name: 'CyberScrape Pro Systems',
-      customer_username: 'cyberscrape',
-      password: 'ScrapePass2026!',
-      plan_type: 'annual',
-      status: 'ACTIVE',
-      created_at: new Date(Date.now() - 86400000 * 45).toISOString(),
-      expires_at: new Date(Date.now() + 86400000 * 320).toISOString(),
-      max_concurrent_sites: 1,
-      total_logins: 18,
-      notes: 'Annual single-seat license for web intelligence gathering'
-    },
-    {
-      id: 'lic-103',
-      license_key: 'WSP-MONTHLY-5512-9904',
-      customer_name: 'Alpha Tech Solutions',
-      customer_username: 'alphatech',
-      password: 'AlphaSecure2026',
-      plan_type: 'monthly',
-      status: 'ACTIVE',
-      created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-      expires_at: new Date(Date.now() + 86400000 * 25).toISOString(),
-      max_concurrent_sites: 1,
-      total_logins: 9,
-      notes: 'Monthly starter package'
-    },
-    {
-      id: 'lic-104',
-      license_key: 'WSP-MONTHLY-1122-3344',
-      customer_name: 'Legacy Beta Tester',
-      customer_username: 'legacy_user',
-      password: 'BetaPass2025!',
-      plan_type: 'monthly',
-      status: 'EXPIRED',
-      created_at: new Date(Date.now() - 86400000 * 60).toISOString(),
-      expires_at: new Date(Date.now() - 86400000 * 30).toISOString(),
-      max_concurrent_sites: 1,
-      total_logins: 5,
-      notes: 'Expired trial subscription'
+      total_logins: 0,
+      notes: 'Initial master commercial license'
     }
   ];
 }

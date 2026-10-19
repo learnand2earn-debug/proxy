@@ -9,6 +9,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isAuthenticated: boolean;
   login: (usernameOrKey: string, password?: string) => Promise<{ success: boolean; error?: string; is_concurrent_locked?: boolean }>;
+  register: (name: string, username: string, password: string, plan_type?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
   isLoginModalOpen: boolean;
@@ -128,6 +129,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (name: string, username: string, password: string, plan_type = 'monthly') => {
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, username, password, plan_type, origin })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Registration failed' };
+      }
+
+      if (data.success && data.session) {
+        setSession(data.session);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('wsp_session_token', data.session.session_token);
+          localStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
+        }
+        setIsLoginModalOpen(false);
+        return { success: true };
+      }
+
+      return { success: false, error: 'Registration incomplete' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Registration network error' };
+    }
+  };
+
   const logout = async () => {
     try {
       if (session?.session_token) {
@@ -163,6 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         isAuthenticated,
         login,
+        register,
         logout,
         refreshSession,
         isLoginModalOpen,

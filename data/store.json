@@ -2,6 +2,120 @@
   "proxies": [
     {
       "owner_id": "00000000-0000-0000-0000-000000000001",
+      "normalized_endpoint": "socks5://198.51.100.99:31549",
+      "protocol": "socks5",
+      "host": "198.51.100.99",
+      "port": 9999,
+      "auth_required": false,
+      "current_status": "UNKNOWN",
+      "check_interval_seconds": 900,
+      "tags": [],
+      "id": "prx-mvf2gety-hlf2",
+      "consecutive_failures": 0,
+      "recovery_count": 0,
+      "is_quarantined": false,
+      "created_at": "2026-10-19T09:43:00.118Z",
+      "updated_at": "2026-10-19T09:43:00.118Z",
+      "next_scheduled_check_at": "2026-10-19T09:43:00.118Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "normalized_endpoint": "socks5://198.51.100.192:1080",
+      "protocol": "socks5",
+      "host": "198.51.100.15",
+      "port": 1080,
+      "auth_required": false,
+      "current_status": "INACTIVE",
+      "check_interval_seconds": 300,
+      "tags": [
+        "unit-test"
+      ],
+      "id": "prx-mvf2gerg-fol6",
+      "consecutive_failures": 3,
+      "recovery_count": 0,
+      "is_quarantined": true,
+      "created_at": "2026-10-19T09:43:00.028Z",
+      "updated_at": "2026-10-19T09:43:00.074Z",
+      "next_scheduled_check_at": "2026-10-19T10:00:31.085Z",
+      "last_checked_at": "2026-10-19T09:43:00.074Z",
+      "last_latency_ms": 5000,
+      "last_failure_category": "CONNECTION_REFUSED",
+      "last_failure_reason": "Port closed",
+      "previous_status": "INACTIVE",
+      "quarantine_reason": "Auto-quarantined after 3 consecutive failures",
+      "quarantined_at": "2026-10-19T09:43:00.074Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "normalized_endpoint": "socks5://198.51.100.200:1080",
+      "protocol": "socks5",
+      "host": "198.51.100.15",
+      "port": 1080,
+      "auth_required": false,
+      "current_status": "UNKNOWN",
+      "check_interval_seconds": 300,
+      "tags": [
+        "unit-test"
+      ],
+      "id": "prx-mvf2geqv-6kfd",
+      "consecutive_failures": 0,
+      "recovery_count": 0,
+      "is_quarantined": false,
+      "created_at": "2026-10-19T09:43:00.007Z",
+      "updated_at": "2026-10-19T09:43:00.007Z",
+      "next_scheduled_check_at": "2026-10-19T09:43:00.007Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "normalized_endpoint": "socks5://198.51.100.17:1080",
+      "protocol": "socks5",
+      "host": "198.51.100.15",
+      "port": 1080,
+      "auth_required": false,
+      "current_status": "UNKNOWN",
+      "check_interval_seconds": 300,
+      "tags": [
+        "unit-test"
+      ],
+      "id": "prx-mvf2geoo-i3sh",
+      "consecutive_failures": 0,
+      "recovery_count": 1,
+      "is_quarantined": false,
+      "created_at": "2026-10-19T09:42:59.928Z",
+      "updated_at": "2026-10-19T09:43:00.106Z",
+      "next_scheduled_check_at": "2026-10-19T09:43:00.106Z",
+      "last_checked_at": "2026-10-19T09:42:59.951Z",
+      "last_latency_ms": 88,
+      "previous_status": "INACTIVE",
+      "last_successful_check_at": "2026-10-19T09:42:59.951Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "normalized_endpoint": "socks5://198.51.100.170:1080",
+      "protocol": "socks5",
+      "host": "198.51.100.15",
+      "port": 1080,
+      "auth_required": false,
+      "current_status": "INACTIVE",
+      "check_interval_seconds": 300,
+      "tags": [
+        "unit-test"
+      ],
+      "id": "prx-mvf2genv-89rv",
+      "consecutive_failures": 1,
+      "recovery_count": 0,
+      "is_quarantined": false,
+      "created_at": "2026-10-19T09:42:59.899Z",
+      "updated_at": "2026-10-19T09:42:59.915Z",
+      "next_scheduled_check_at": "2026-10-19T09:51:26.915Z",
+      "last_checked_at": "2026-10-19T09:42:59.915Z",
+      "last_latency_ms": 6000,
+      "last_failure_category": "TIMEOUT",
+      "last_failure_reason": "Timed out waiting for connection",
+      "previous_status": "UNKNOWN"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
       "normalized_endpoint": "socks5://198.51.100.99:14014",
       "protocol": "socks5",
       "host": "198.51.100.99",
@@ -17324,18 +17438,22 @@
       "host": "198.51.100.15",
       "port": 1080,
       "auth_required": false,
-      "current_status": "UNKNOWN",
+      "current_status": "ACTIVE",
       "check_interval_seconds": 300,
       "tags": [
         "unit-test"
       ],
       "id": "prx-mvet8vb7-btdr",
       "consecutive_failures": 0,
-      "recovery_count": 0,
+      "recovery_count": 1,
       "is_quarantined": false,
       "created_at": "2026-10-19T05:25:11.683Z",
-      "updated_at": "2026-10-19T05:25:11.683Z",
-      "next_scheduled_check_at": "2026-10-19T05:25:11.683Z"
+      "updated_at": "2026-10-19T09:42:59.996Z",
+      "next_scheduled_check_at": "2026-10-19T09:47:59.996Z",
+      "last_checked_at": "2026-10-19T09:42:59.996Z",
+      "last_latency_ms": 105,
+      "last_successful_check_at": "2026-10-19T09:42:59.996Z",
+      "previous_status": "ACTIVE"
     },
     {
       "owner_id": "00000000-0000-0000-0000-000000000001",
@@ -25527,6 +25645,89 @@
   ],
   "check_history": [
     {
+      "id": "chk-mvf2get1-5af",
+      "proxy_id": "prx-mvf2gerg-fol6",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:43:00.074Z",
+      "status": "INACTIVE",
+      "latency_ms": 5000,
+      "handshake_success": false,
+      "error_category": "CONNECTION_REFUSED",
+      "error_message": "Port closed"
+    },
+    {
+      "id": "chk-mvf2gesg-4oj",
+      "proxy_id": "prx-mvf2gerg-fol6",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:43:00.064Z",
+      "status": "INACTIVE",
+      "latency_ms": 5000,
+      "handshake_success": false,
+      "error_category": "CONNECTION_REFUSED",
+      "error_message": "Port closed"
+    },
+    {
+      "id": "chk-mvf2ges1-ooe",
+      "proxy_id": "prx-mvf2gerg-fol6",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:43:00.049Z",
+      "status": "INACTIVE",
+      "latency_ms": 5000,
+      "handshake_success": false,
+      "error_category": "CONNECTION_REFUSED",
+      "error_message": "Port closed"
+    },
+    {
+      "id": "chk-mvf2geqk-1kp",
+      "proxy_id": "prx-mvet8vb7-btdr",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:42:59.996Z",
+      "status": "ACTIVE",
+      "latency_ms": 105,
+      "handshake_success": true
+    },
+    {
+      "id": "chk-mvf2geq9-w4i",
+      "proxy_id": "prx-mvet8vb7-btdr",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:42:59.974Z",
+      "status": "ACTIVE",
+      "latency_ms": 100,
+      "handshake_success": true
+    },
+    {
+      "id": "chk-mvf2gepl-2o9",
+      "proxy_id": "prx-mvf2geoo-i3sh",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:42:59.951Z",
+      "status": "ACTIVE",
+      "latency_ms": 88,
+      "status_code": 200,
+      "handshake_success": true
+    },
+    {
+      "id": "chk-mvf2geoz-s1i",
+      "proxy_id": "prx-mvf2geoo-i3sh",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:42:59.939Z",
+      "status": "INACTIVE",
+      "latency_ms": 5000,
+      "handshake_success": false,
+      "error_category": "TIMEOUT",
+      "error_message": "Refused"
+    },
+    {
+      "id": "chk-mvf2geob-jqz",
+      "proxy_id": "prx-mvf2genv-89rv",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "check_timestamp": "2026-10-19T09:42:59.915Z",
+      "status": "INACTIVE",
+      "latency_ms": 6000,
+      "handshake_success": false,
+      "error_category": "TIMEOUT",
+      "error_message": "Timed out waiting for connection"
+    },
+    {
       "id": "chk-mvf1qg4d-me2",
       "proxy_id": "prx-mvf1qg1g-jkz4",
       "owner_id": "00000000-0000-0000-0000-000000000001",
@@ -30865,97 +31066,33 @@
       "handshake_success": false,
       "error_category": "CONNECTION_RESET",
       "error_message": "Connection was forcibly closed by the remote host"
-    },
-    {
-      "id": "chk-mv9cdfju-59a",
-      "proxy_id": "prx-mono-kt9g92",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:34:00.186Z",
-      "status": "ACTIVE",
-      "latency_ms": 746,
-      "status_code": 200,
-      "handshake_success": true,
-      "diagnostic_target": "tcp://1.1.1.1:80 (CONNECT Tunnel)"
-    },
-    {
-      "id": "chk-mv9cdfjp-d06",
-      "proxy_id": "prx-mono-ah1dw6",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:34:00.181Z",
-      "status": "ACTIVE",
-      "latency_ms": 741,
-      "status_code": 200,
-      "handshake_success": true,
-      "diagnostic_target": "tcp://1.1.1.1:80 (CONNECT Tunnel)"
-    },
-    {
-      "id": "chk-mv9cd73v-o08",
-      "proxy_id": "prx-mono-qyeipl",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:49.238Z",
-      "status": "INACTIVE",
-      "latency_ms": 8526,
-      "handshake_success": false,
-      "error_category": "TIMEOUT",
-      "error_message": "Connection attempt timed out after 5000ms"
-    },
-    {
-      "id": "chk-mv9cd1bp-t92",
-      "proxy_id": "prx-mono-27g6zm",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:41.744Z",
-      "status": "INACTIVE",
-      "latency_ms": 1031,
-      "status_code": 504,
-      "handshake_success": false,
-      "error_category": "PROXY_SERVER_ERROR",
-      "error_message": "Proxy returned upstream error status code: 504"
-    },
-    {
-      "id": "chk-mv9ccruz-pt6",
-      "proxy_id": "prx-mono-vyj32s",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:29.483Z",
-      "status": "ACTIVE",
-      "latency_ms": 761,
-      "status_code": 400,
-      "handshake_success": true
-    },
-    {
-      "id": "chk-mv9ccrtz-52o",
-      "proxy_id": "prx-mono-ngt2qq",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:29.447Z",
-      "status": "ACTIVE",
-      "latency_ms": 724,
-      "status_code": 200,
-      "handshake_success": true,
-      "diagnostic_target": "tcp://1.1.1.1:80 (CONNECT Tunnel)"
-    },
-    {
-      "id": "chk-mv9ccrjt-3i7",
-      "proxy_id": "prx-mono-pbt0yb",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:29.081Z",
-      "status": "ACTIVE",
-      "latency_ms": 358,
-      "status_code": 200,
-      "handshake_success": true,
-      "diagnostic_target": "tcp://1.1.1.1:80 (CONNECT Tunnel)"
-    },
-    {
-      "id": "chk-mv9ccrjj-97k",
-      "proxy_id": "prx-mono-o00lii",
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "check_timestamp": "2026-10-15T09:33:29.071Z",
-      "status": "ACTIVE",
-      "latency_ms": 349,
-      "status_code": 200,
-      "handshake_success": true,
-      "diagnostic_target": "tcp://1.1.1.1:80 (CONNECT Tunnel)"
     }
   ],
   "transitions": [
+    {
+      "id": "trans-mvf2gepy",
+      "proxy_id": "prx-mvet8vb7-btdr",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "from_status": "UNKNOWN",
+      "to_status": "ACTIVE",
+      "transitioned_at": "2026-10-19T09:42:59.974Z",
+      "reason": "Proxy successfully completed diagnostic connectivity handshake",
+      "notified": true,
+      "latency_ms": 100,
+      "endpoint_masked": "socks5://198.51.100.115:1080"
+    },
+    {
+      "id": "trans-mvf2gepb",
+      "proxy_id": "prx-mvf2geoo-i3sh",
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "from_status": "INACTIVE",
+      "to_status": "ACTIVE",
+      "transitioned_at": "2026-10-19T09:42:59.951Z",
+      "reason": "Proxy successfully completed diagnostic connectivity handshake",
+      "notified": true,
+      "latency_ms": 88,
+      "endpoint_masked": "socks5://198.51.100.17:1080"
+    },
     {
       "id": "trans-mvf1qg30",
       "proxy_id": "prx-mvf1qg1g-jkz4",
@@ -33310,6 +33447,39 @@
     }
   ],
   "notifications": [
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "title": "Proxy Automatically Quarantined",
+      "message": "Endpoint socks5://198.51.100.192:1080 quarantined due to repeated failures.",
+      "channel": "in_app",
+      "type": "quarantined",
+      "proxy_id": "prx-mvf2gerg-fol6",
+      "id": "notif-mvf2gesq-xvr",
+      "is_read": false,
+      "created_at": "2026-10-19T09:43:00.074Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "title": "Proxy Recovered: INACTIVE -> ACTIVE",
+      "message": "Proxy socks5://198.51.100.115:1080 has recovered. Latency: 100ms.",
+      "channel": "in_app",
+      "type": "proxy_recovered",
+      "proxy_id": "prx-mvet8vb7-btdr",
+      "id": "notif-mvf2gepy-c0f",
+      "is_read": false,
+      "created_at": "2026-10-19T09:42:59.974Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "title": "Proxy Recovered: INACTIVE -> ACTIVE",
+      "message": "Proxy socks5://198.51.100.17:1080 has recovered. Latency: 88ms.",
+      "channel": "in_app",
+      "type": "proxy_recovered",
+      "proxy_id": "prx-mvf2geoo-i3sh",
+      "id": "notif-mvf2gepb-h4s",
+      "is_read": false,
+      "created_at": "2026-10-19T09:42:59.951Z"
+    },
     {
       "owner_id": "00000000-0000-0000-0000-000000000001",
       "title": "Proxy Automatically Quarantined",
@@ -38139,6 +38309,88 @@
     }
   ],
   "audit_logs": [
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_CREATED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2gety-hlf2",
+      "details": {
+        "endpoint": "socks5://198.51.100.99:31549",
+        "protocol": "socks5"
+      },
+      "id": "aud-mvf2gety-57k",
+      "created_at": "2026-10-19T09:43:00.118Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_RESTORED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2geoo-i3sh",
+      "details": {
+        "endpoint": "socks5://198.51.100.17:1080"
+      },
+      "id": "aud-mvf2getm-i5y",
+      "created_at": "2026-10-19T09:43:00.106Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_QUARANTINED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2geoo-i3sh",
+      "details": {
+        "reason": "Manual quarantine test"
+      },
+      "id": "aud-mvf2getc-cdo",
+      "created_at": "2026-10-19T09:43:00.096Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_CREATED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2gerg-fol6",
+      "details": {
+        "endpoint": "socks5://198.51.100.192:1080",
+        "protocol": "socks5"
+      },
+      "id": "aud-mvf2gerg-sv8",
+      "created_at": "2026-10-19T09:43:00.028Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_CREATED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2geqv-6kfd",
+      "details": {
+        "endpoint": "socks5://198.51.100.200:1080",
+        "protocol": "socks5"
+      },
+      "id": "aud-mvf2geqv-7dj",
+      "created_at": "2026-10-19T09:43:00.007Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_CREATED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2geoo-i3sh",
+      "details": {
+        "endpoint": "socks5://198.51.100.17:1080",
+        "protocol": "socks5"
+      },
+      "id": "aud-mvf2geoo-fx2",
+      "created_at": "2026-10-19T09:42:59.928Z"
+    },
+    {
+      "owner_id": "00000000-0000-0000-0000-000000000001",
+      "action": "PROXY_CREATED",
+      "entity_type": "PROXY",
+      "entity_id": "prx-mvf2genv-89rv",
+      "details": {
+        "endpoint": "socks5://198.51.100.170:1080",
+        "protocol": "socks5"
+      },
+      "id": "aud-mvf2genw-92i",
+      "created_at": "2026-10-19T09:42:59.900Z"
+    },
     {
       "owner_id": "00000000-0000-0000-0000-000000000001",
       "action": "PROXY_CREATED",
@@ -44042,90 +44294,6 @@
       },
       "id": "aud-mvettc6y-r83",
       "created_at": "2026-10-19T05:41:06.682Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc6n-vm6s",
-      "details": {
-        "endpoint": "http://103.14.2.138:2020",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc6n-zqo",
-      "created_at": "2026-10-19T05:41:06.671Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc6e-ift5",
-      "details": {
-        "endpoint": "http://202.179.76.105:51951",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc6f-e36",
-      "created_at": "2026-10-19T05:41:06.663Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc64-mcws",
-      "details": {
-        "endpoint": "http://103.81.255.141:8080",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc64-6mp",
-      "created_at": "2026-10-19T05:41:06.652Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc5u-9xa7",
-      "details": {
-        "endpoint": "http://219.65.73.80:80",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc5u-shy",
-      "created_at": "2026-10-19T05:41:06.642Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc5l-0pyn",
-      "details": {
-        "endpoint": "http://103.48.71.166:83",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc5l-1to",
-      "created_at": "2026-10-19T05:41:06.633Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc5a-7jkn",
-      "details": {
-        "endpoint": "http://117.244.114.54:1081",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc5a-03y",
-      "created_at": "2026-10-19T05:41:06.622Z"
-    },
-    {
-      "owner_id": "00000000-0000-0000-0000-000000000001",
-      "action": "PROXY_CREATED",
-      "entity_type": "PROXY",
-      "entity_id": "prx-mvettc4z-leo2",
-      "details": {
-        "endpoint": "http://103.48.71.142:82",
-        "protocol": "http"
-      },
-      "id": "aud-mvettc4z-b16",
-      "created_at": "2026-10-19T05:41:06.611Z"
     }
   ],
   "settings": {
@@ -44143,63 +44311,18 @@
   },
   "licenses": [
     {
-      "id": "lic-101",
-      "license_key": "WSP-LIFETIME-GOLD-7788",
-      "customer_name": "Apex Data Labs Enterprise",
-      "customer_username": "apex_vip",
-      "password": "ApexPassword123!",
+      "id": "lic-master-001",
+      "license_key": "WSP-LIFETIME-MASTER-0001",
+      "customer_name": "Primary System Operator",
+      "customer_username": "operator",
+      "password": "OperatorPassword2026!",
       "plan_type": "lifetime",
       "status": "ACTIVE",
-      "created_at": "2026-09-19T08:44:37.392Z",
+      "created_at": "2026-10-19T09:42:04.720Z",
       "expires_at": "2099-12-31T23:59:59.000Z",
       "max_concurrent_sites": 1,
-      "active_origin": "http://localhost:3000",
-      "active_session_token": "wsp_sess_apex_initial",
-      "last_active_at": "2026-10-19T08:43:37.393Z",
-      "total_logins": 42,
-      "notes": "VIP Enterprise account with unrestricted lifetime access"
-    },
-    {
-      "id": "lic-102",
-      "license_key": "WSP-ANNUAL-9201-4432",
-      "customer_name": "CyberScrape Pro Systems",
-      "customer_username": "cyberscrape",
-      "password": "ScrapePass2026!",
-      "plan_type": "annual",
-      "status": "ACTIVE",
-      "created_at": "2026-09-04T08:44:37.393Z",
-      "expires_at": "2027-09-04T08:44:37.393Z",
-      "max_concurrent_sites": 1,
-      "total_logins": 18,
-      "notes": "Annual single-seat license for web intelligence gathering"
-    },
-    {
-      "id": "lic-103",
-      "license_key": "WSP-MONTHLY-5512-9904",
-      "customer_name": "Alpha Tech Solutions",
-      "customer_username": "alphatech",
-      "password": "AlphaSecure2026",
-      "plan_type": "monthly",
-      "status": "ACTIVE",
-      "created_at": "2026-10-14T08:44:37.393Z",
-      "expires_at": "2026-11-13T08:44:37.393Z",
-      "max_concurrent_sites": 1,
-      "total_logins": 9,
-      "notes": "Monthly starter package"
-    },
-    {
-      "id": "lic-104",
-      "license_key": "WSP-MONTHLY-1122-3344",
-      "customer_name": "Legacy Beta Tester",
-      "customer_username": "legacy_user",
-      "password": "BetaPass2025!",
-      "plan_type": "monthly",
-      "status": "EXPIRED",
-      "created_at": "2026-08-20T08:44:37.393Z",
-      "expires_at": "2026-09-19T08:44:37.393Z",
-      "max_concurrent_sites": 1,
-      "total_logins": 5,
-      "notes": "Expired trial subscription"
+      "total_logins": 0,
+      "notes": "Master commercial license"
     }
   ]
 }

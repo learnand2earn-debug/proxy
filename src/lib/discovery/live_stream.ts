@@ -1,3 +1,4 @@
+import net from 'net';
 import { ProxyRecord, ProxyProtocol, ProxyStatus } from '@/types';
 import { repo, DEFAULT_OWNER_ID } from '../db/repository';
 import { validateEndpointSecurity } from '../security/ssrf';
@@ -20,6 +21,41 @@ export interface LiveDiscoveredProxy {
 
 export * from '../constants/countries';
 import { getCountryInfo } from '../constants/countries';
+
+/**
+ * Measures genuine TCP handshake latency in milliseconds.
+ * Returns real network elapsed time (zero simulation).
+ */
+export function measureRealTcpLatency(host: string, port: number, timeoutMs = 1500): Promise<number> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const socket = new net.Socket();
+    let finished = false;
+
+    const done = (latency: number) => {
+      if (!finished) {
+        finished = true;
+        socket.destroy();
+        resolve(latency);
+      }
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => {
+      const elapsed = Date.now() - start;
+      done(Math.max(1, elapsed));
+    });
+
+    socket.once('timeout', () => done(0));
+    socket.once('error', () => done(0));
+
+    try {
+      socket.connect(port, host);
+    } catch {
+      done(0);
+    }
+  });
+}
 
 // In-memory rotating live buffer by country
 const liveProxyBufferByCountry = new Map<string, { list: LiveDiscoveredProxy[]; timestamp: number }>();
@@ -141,9 +177,9 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
           flag: cInfo.flag,
           city: '',
           anonymity: 'elite',
-          latency_ms: Math.floor(Math.random() * 80) + 45,
+          latency_ms: 0, // Unchecked until live probe
           source: `ProxyScrape ${cInfo.name} Realtime Feed`,
-          verified_active: true,
+          verified_active: false,
           timestamp: new Date().toISOString()
         });
       }
@@ -203,7 +239,7 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
             flag: itemCInfo.flag,
             city: '',
             anonymity,
-            latency_ms: Math.floor(Math.random() * 90) + 50,
+            latency_ms: 0, // Unchecked until live probe
             source: `Global Scraper ${itemCInfo.name} Node`,
             verified_active: false,
             timestamp: new Date().toISOString()
@@ -244,7 +280,7 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
             country_name: cInfo.name,
             flag: cInfo.flag,
             anonymity: 'elite',
-            latency_ms: 65,
+            latency_ms: 0,
             source: 'monosans Realtime Feed',
             verified_active: false,
             timestamp: new Date().toISOString()
