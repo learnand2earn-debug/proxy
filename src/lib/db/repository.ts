@@ -473,6 +473,7 @@ export function getInitialSeedLicenses(): LicenseRecord[] {
 
 class Repository {
   private state: DBState;
+  private activeAdminSessions = new Map<string, { createdAt: number; expiresAt: number }>();
 
   constructor() {
     this.state = this.loadState();
@@ -1403,6 +1404,11 @@ class Repository {
 
     if (isAdminUser && isAdminPass) {
       const adminToken = `wsp_admin_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      // Strictly register active authenticated admin session (expires after 12 hours)
+      this.activeAdminSessions.set(adminToken, {
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000
+      });
       return {
         success: true,
         session: {
@@ -1498,8 +1504,13 @@ class Repository {
   } {
     if (!sessionToken) return { valid: false, error: 'No session token provided' };
 
-    // Admin session check
+    // Admin session check - strictly require an active, unexpired admin session
     if (sessionToken.startsWith('wsp_admin_')) {
+      const sessionData = this.activeAdminSessions.get(sessionToken);
+      if (!sessionData || sessionData.expiresAt < Date.now()) {
+        this.activeAdminSessions.delete(sessionToken);
+        return { valid: false, error: 'Administrator session expired or terminated. Please log in.' };
+      }
       return {
         valid: true,
         session: {
@@ -1550,7 +1561,13 @@ class Repository {
   }
 
   public heartbeat(sessionToken: string): boolean {
-    if (!sessionToken || sessionToken.startsWith('wsp_admin_')) return true;
+    if (!sessionToken) return false;
+    if (sessionToken.startsWith('wsp_admin_')) {
+      const sessionData = this.activeAdminSessions.get(sessionToken);
+      if (!sessionData || sessionData.expiresAt < Date.now()) return false;
+      sessionData.expiresAt = Date.now() + 12 * 60 * 60 * 1000;
+      return true;
+    }
     const lic = (this.state.licenses || []).find(l => l.active_session_token === sessionToken);
     if (!lic) return false;
     lic.last_active_at = new Date().toISOString();
@@ -1559,7 +1576,11 @@ class Repository {
   }
 
   public logoutSession(sessionToken: string): boolean {
-    if (!sessionToken || sessionToken.startsWith('wsp_admin_')) return true;
+    if (!sessionToken) return false;
+    if (sessionToken.startsWith('wsp_admin_')) {
+      this.activeAdminSessions.delete(sessionToken);
+      return true;
+    }
     const lic = (this.state.licenses || []).find(l => l.active_session_token === sessionToken);
     if (!lic) return false;
     lic.active_session_token = undefined;

@@ -26,7 +26,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Validate or restore session
   const refreshSession = useCallback(async () => {
     try {
-      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('wsp_session_token') : null;
+      const storedToken = 
+        typeof window !== 'undefined' 
+          ? (sessionStorage.getItem('wsp_session_token') || localStorage.getItem('wsp_session_token')) 
+          : null;
+
       if (!storedToken) {
         setSession(null);
         setLoading(false);
@@ -45,13 +49,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.valid && data.session) {
           setSession(data.session);
           if (typeof window !== 'undefined') {
-            localStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
+            sessionStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
           }
         } else {
           setSession(null);
           if (typeof window !== 'undefined') {
             localStorage.removeItem('wsp_session_token');
             localStorage.removeItem('wsp_auth_user');
+            sessionStorage.removeItem('wsp_session_token');
+            sessionStorage.removeItem('wsp_auth_user');
           }
         }
       } else {
@@ -59,10 +65,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (typeof window !== 'undefined') {
           localStorage.removeItem('wsp_session_token');
           localStorage.removeItem('wsp_auth_user');
+          sessionStorage.removeItem('wsp_session_token');
+          sessionStorage.removeItem('wsp_auth_user');
         }
       }
     } catch (err) {
       console.warn('Session verification error:', err);
+      setSession(null);
     } finally {
       setLoading(false);
     }
@@ -116,6 +125,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.success && data.session) {
         setSession(data.session);
         if (typeof window !== 'undefined') {
+          sessionStorage.setItem('wsp_session_token', data.session.session_token);
+          sessionStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
           localStorage.setItem('wsp_session_token', data.session.session_token);
           localStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
         }
@@ -146,6 +157,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.success && data.session) {
         setSession(data.session);
         if (typeof window !== 'undefined') {
+          sessionStorage.setItem('wsp_session_token', data.session.session_token);
+          sessionStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
           localStorage.setItem('wsp_session_token', data.session.session_token);
           localStorage.setItem('wsp_auth_user', JSON.stringify(data.session));
         }
@@ -178,6 +191,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.removeItem('wsp_session_token');
         localStorage.removeItem('wsp_auth_user');
+        sessionStorage.removeItem('wsp_session_token');
+        sessionStorage.removeItem('wsp_auth_user');
       }
       setIsLoginModalOpen(true);
     }

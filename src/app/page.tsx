@@ -30,7 +30,7 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { DashboardStats, ProxyRecord } from '@/types';
 
 function DashboardContent() {
-  const { session } = useAuth();
+  const { session, isAuthenticated, loading } = useAuth();
   const [currentView, setCurrentView] = useState<PageView>('overview');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [proxies, setProxies] = useState<ProxyRecord[]>([]);
@@ -59,8 +59,10 @@ function DashboardContent() {
     }
   }, [session?.user_id, session?.role]);
 
-  // Fetch telemetry & data
+  // Fetch telemetry & data - ONLY when user is authenticated
   const fetchData = useCallback(() => {
+    if (!isAuthenticated) return;
+
     // 1. Stats
     fetch('/api/stats')
       .then(r => r.json())
@@ -91,11 +93,13 @@ function DashboardContent() {
         }
       })
       .catch(console.error);
-  }, [page, currentView]);
+  }, [page, currentView, isAuthenticated]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [fetchData, isAuthenticated]);
 
   // Keyboard shortcut for AI Copilot (Cmd+K or Ctrl+K)
   useEffect(() => {
@@ -108,6 +112,34 @@ function DashboardContent() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // 1. If verifying session, show clean loading gateway screen
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050814] flex flex-col items-center justify-center text-slate-300">
+        <div className="relative w-14 h-14 flex items-center justify-center mb-4">
+          <div className="absolute inset-0 rounded-2xl bg-cyan-500/20 animate-ping"></div>
+          <div className="w-10 h-10 rounded-2xl border-2 border-t-cyan-400 border-r-cyan-400 border-b-transparent border-l-transparent animate-spin"></div>
+        </div>
+        <p className="text-xs font-mono text-cyan-400 font-semibold tracking-wider">VERIFYING SECURITY GATEWAY...</p>
+      </div>
+    );
+  }
+
+  // 2. If NOT authenticated, STRICTLY render Login Screen (Dashboard is completely inaccessible)
+  if (!isAuthenticated || !session) {
+    return (
+      <LoginModal 
+        onLoginSuccess={(role) => {
+          if (role === 'admin') {
+            setCurrentView('admin');
+          } else {
+            setCurrentView('overview');
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex">

@@ -33,8 +33,8 @@ const BG_VIDEOS = [
 export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const { isLoginModalOpen, setIsLoginModalOpen, login, isAuthenticated } = useAuth();
   
-  // Default to Commercial License Key tab (clean client portal access)
-  const [loginMethod, setLoginMethod] = useState<'key' | 'credentials'>('key');
+  // Default to System Admin credentials tab
+  const [loginMethod, setLoginMethod] = useState<'key' | 'credentials'>('credentials');
 
   // Input states start clean and empty
   const [username, setUsername] = useState('');

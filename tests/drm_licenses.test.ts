@@ -31,6 +31,32 @@ describe('DRM License & Single-Site Concurrency Engine', () => {
     expect(auth.session?.session_token.startsWith('wsp_admin_')).toBe(true);
   });
 
+  it('strictly validates active admin sessions and invalidates upon logout', () => {
+    // 1. Unregistered arbitrary admin token must NOT be accepted automatically
+    const fakeToken = `wsp_admin_fake_${Date.now()}`;
+    const fakeValidation = repo.validateSession(fakeToken);
+    expect(fakeValidation.valid).toBe(false);
+
+    // 2. Legitimate login produces an active registered session
+    const auth = repo.authenticate({
+      usernameOrKey: 'websitespark20',
+      password: 'spark78601',
+      origin: 'http://localhost:3000'
+    });
+    expect(auth.success).toBe(true);
+    const validToken = auth.session!.session_token;
+
+    // 3. Validated session is valid
+    const legitValidation = repo.validateSession(validToken);
+    expect(legitValidation.valid).toBe(true);
+    expect(legitValidation.session?.role).toBe('admin');
+
+    // 4. Logout strictly destroys the active admin session
+    repo.logoutSession(validToken);
+    const postLogoutValidation = repo.validateSession(validToken);
+    expect(postLogoutValidation.valid).toBe(false);
+  });
+
   it('creates and retrieves a new customer license record', () => {
     const lic = repo.createLicense({
       customer_name: 'Test Corp Automated',
