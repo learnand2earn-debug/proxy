@@ -44,6 +44,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
+  const [origin, setOrigin] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setOrigin(window.location.origin);
+    }
+  }, []);
 
   // Background Videos Continuous Sequential Looping
   const [activeVideoIdx, setActiveVideoIdx] = useState(0);
@@ -357,8 +364,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>Target DRM Origin:</span>
           </span>
-          <span className="text-cyan-300 font-bold tracking-tight">
-            {typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}
+          <span className="text-cyan-300 font-bold tracking-tight" suppressHydrationWarning>
+            {origin || 'http://localhost:3000'}
           </span>
         </div>
       </div>

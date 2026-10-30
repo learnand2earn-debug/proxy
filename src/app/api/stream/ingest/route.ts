@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const count = Math.min(parseInt(body.count || '100', 10), 300);
+    const count = parseInt(body.count || '2500', 10);
     const country = body.country ? String(body.country).trim().toUpperCase() : undefined;
     const countryInfo = country ? getCountryInfo(country) : null;
 

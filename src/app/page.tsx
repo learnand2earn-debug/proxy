@@ -149,13 +149,13 @@ function DashboardContent() {
             />
           )}
 
-          {/* VIEW: LIVE STREAM RADAR ("line hi laga dai saroi bohut sary atay jain atay jain") */}
-          {currentView === 'live_stream' && (
+          {/* VIEW: LIVE STREAM RADAR (Kept mounted so switching sections does not reset counter or stream) */}
+          <div className={currentView === 'live_stream' ? 'block' : 'hidden'}>
             <LiveStreamRadarView
               onProxyIngested={fetchData}
               onSelectProxyForInspect={setInspectProxy}
             />
-          )}
+          </div>
 
           {/* VIEW: OVERVIEW */}
           {currentView === 'overview' && (

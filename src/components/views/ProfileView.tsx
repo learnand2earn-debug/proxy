@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UserCheck, 
   Key, 
@@ -21,6 +21,13 @@ import { DEFAULT_OWNER_ID } from '@/types';
 export const ProfileView: React.FC = () => {
   const { session, logout, isAuthenticated, setIsLoginModalOpen } = useAuth();
   const [copiedKey, setCopiedKey] = useState(false);
+  const [clientOrigin, setClientOrigin] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setClientOrigin(window.location.origin);
+    }
+  }, []);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -155,8 +162,8 @@ export const ProfileView: React.FC = () => {
 
           <div className="flex justify-between py-2 border-b border-[#1a2540]">
             <span className="text-slate-400">Locked Domain / Origin:</span>
-            <span className="text-cyan-400 font-mono font-medium">
-              {session.bound_origin || (typeof window !== 'undefined' ? window.location.origin : 'Current Origin')}
+            <span className="text-cyan-400 font-mono font-medium" suppressHydrationWarning>
+              {session.bound_origin || clientOrigin || 'Current Origin'}
             </span>
           </div>
 

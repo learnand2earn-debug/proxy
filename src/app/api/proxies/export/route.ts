@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       status: status || undefined,
       country_code: country,
       is_quarantined,
-      limit: 10000
+      limit: 0 // 0 = UNLIMITED (export every single proxy without cap)
     });
 
     const filename = `proxy_inventory_${country || 'all'}_${status || 'all'}_${Date.now()}`;

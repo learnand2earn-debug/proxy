@@ -86,12 +86,54 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     }
   }, [soundEnabled]);
 
+  // Initial load: restore counter and preload verified proxies from DB so it never starts at 0
+  useEffect(() => {
+    const savedCount = typeof window !== 'undefined' ? localStorage.getItem('wsp_radar_packet_count') : null;
+    if (savedCount) {
+      setTotalStreamedCount(parseInt(savedCount, 10));
+    }
+
+    fetch('/api/proxies?limit=100&status=ACTIVE')
+      .then(r => r.json())
+      .then(d => {
+        if (d.data && d.data.length > 0) {
+          const preloaded: LiveDiscoveredProxy[] = d.data.map((p: any) => {
+            const cInfo = getCountryInfo(p.country_code || 'US');
+            return {
+              ip: p.host,
+              port: p.port,
+              protocol: p.protocol,
+              normalized_endpoint: p.normalized_endpoint,
+              country_code: cInfo.code,
+              country_name: cInfo.name,
+              flag: cInfo.flag,
+              city: '',
+              anonymity: p.anonymity || 'elite',
+              latency_ms: p.last_latency_ms || 80,
+              source: p.source_name || 'Verified Database Pool',
+              verified_active: true,
+              timestamp: p.created_at || new Date().toISOString()
+            };
+          });
+
+          setStreamedProxies(prev => {
+            if (prev.length === 0) return preloaded;
+            const seen = new Set(prev.map(x => x.normalized_endpoint));
+            const fresh = preloaded.filter(x => !seen.has(x.normalized_endpoint));
+            return [...prev, ...fresh].slice(0, 10000);
+          });
+
+          if (!savedCount && d.total) {
+            setTotalStreamedCount(d.total);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Connect to SSE Stream (filtered by country & protocol)
   useEffect(() => {
     if (!isPlaying) return;
-
-    // Reset buffer when country changes
-    setStreamedProxies([]);
 
     let eventSource: EventSource | null = null;
     const url = `/api/stream/live?speed=${streamSpeed}&protocol=${protocolFilter}&auto_ingest=${autoIngest}&country=${selectedCountry}`;
@@ -110,9 +152,13 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               if (seen.has(p.normalized_endpoint)) return false;
               seen.add(p.normalized_endpoint);
               return true;
-            }).slice(0, 80);
+            }).slice(0, 10000);
           });
-          setTotalStreamedCount(prev => prev + list.length);
+          setTotalStreamedCount(prev => {
+            const next = prev + list.length;
+            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
+            return next;
+          });
         } catch (e) {
           console.error('Error parsing initial burst:', e);
         }
@@ -121,8 +167,12 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       eventSource.addEventListener('proxy_incoming', (event) => {
         try {
           const proxy: LiveDiscoveredProxy = JSON.parse(event.data);
-          setStreamedProxies(prev => [proxy, ...prev.slice(0, 75)]);
-          setTotalStreamedCount(prev => prev + 1);
+          setStreamedProxies(prev => [proxy, ...prev.slice(0, 9999)]);
+          setTotalStreamedCount(prev => {
+            const next = prev + 1;
+            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
+            return next;
+          });
           playBeep(980);
         } catch (e) {
           console.error('Error parsing live proxy:', e);
@@ -143,7 +193,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     };
   }, [isPlaying, streamSpeed, protocolFilter, autoIngest, selectedCountry, playBeep]);
 
-  // Instant Bulk Ingest Button (100 proxies of the selected country)
+  // Instant Bulk Ingest Button (Large high-yield batch of selected country)
   const handleBulkIngestNow = async () => {
     setIsBulkIngesting(true);
     setBulkIngestFeedback(null);
@@ -152,14 +202,19 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          count: 100,
+          count: 2500,
           country: selectedCountry !== 'ALL' ? selectedCountry : undefined
         })
       });
       const data = await res.json();
       if (data.success) {
         const countryLabel = selectedCountry !== 'ALL' ? activeCountryMeta.name : 'Real Global';
-        setBulkIngestFeedback(`+${data.inserted} New ${countryLabel} Proxies Ingested! (${data.duplicates} Duplicates skipped)`);
+        setBulkIngestFeedback(`+${data.inserted} New ${countryLabel} Proxies Ingested & Saved! (${data.duplicates} Duplicates skipped)`);
+        setTotalStreamedCount(prev => {
+          const next = prev + (data.inserted || 0);
+          if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
+          return next;
+        });
         if (onProxyIngested) onProxyIngested();
         setTimeout(() => setBulkIngestFeedback(null), 5000);
       } else {
@@ -172,8 +227,18 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     }
   };
 
-  // Quick Export Streamed Proxies
-  const handleExportStream = (format: 'txt' | 'json') => {
+  // Quick Export Streamed Proxies or Entire Database
+  const handleExportStream = (format: 'txt' | 'json', mode: 'stream' | 'all_db' = 'all_db') => {
+    if (mode === 'all_db') {
+      const link = document.createElement('a');
+      link.href = `/api/proxies/export?format=${format}&status=ALL`;
+      link.setAttribute('download', `proxy_inventory_all_${Date.now()}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
     if (streamedProxies.length === 0) return;
     let content = '';
     let mime = 'text/plain';
@@ -309,7 +374,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               <Zap className={`w-4 h-4 ${isBulkIngesting ? 'animate-spin' : ''}`} />
               {isBulkIngesting 
                 ? `Harvesting ${activeCountryMeta.name}...` 
-                : `⚡ Ingest 100 ${activeCountryMeta.name} Live Now`}
+                : `⚡ Ingest 1,000+ ${activeCountryMeta.name} Live (Save to DB)`}
             </button>
 
             <div className="flex items-center bg-[#131d35] border border-[#1f2e52] rounded-xl p-1">
@@ -523,14 +588,27 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
           </label>
 
           <button
-            onClick={() => handleExportStream('txt')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all"
+            onClick={() => handleExportStream('txt', 'all_db')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/30 transition-all shadow-md"
+            title="Download entire database inventory without limit"
           >
-            <Download className="w-3.5 h-3.5" /> Export .TXT
+            <Download className="w-3.5 h-3.5" /> Export All DB (Unlimited .TXT)
           </button>
 
           <button
-            onClick={() => setStreamedProxies([])}
+            onClick={() => handleExportStream('txt', 'stream')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all"
+            title="Export currently buffered streamed proxies"
+          >
+            <Download className="w-3.5 h-3.5" /> Export Streamed ({streamedProxies.length})
+          </button>
+
+          <button
+            onClick={() => {
+              setStreamedProxies([]);
+              setTotalStreamedCount(0);
+              if (typeof window !== 'undefined') localStorage.removeItem('wsp_radar_packet_count');
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-[#233358] transition-all"
           >
             <Trash2 className="w-3.5 h-3.5" /> Clear Feed

@@ -39,7 +39,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
 }) => {
   const [selectedCountry, setSelectedCountry] = useState<string>('PK'); // Default Pakistan
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
-  const [requestedCount, setRequestedCount] = useState<number>(100);
+  const [requestedCount, setRequestedCount] = useState<number>(2500);
   const [autoSaveDb, setAutoSaveDb] = useState<boolean>(true);
   
   const [countrySearch, setCountrySearch] = useState<string>('');
@@ -83,9 +83,8 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
         setHarvestFeedback('Harvest error: ' + (data.error || 'Failed'));
       }
 
-      // Also fetch live buffer to populate the view's list
-      // We query /api/proxies with country filter
-      const inventoryRes = await fetch(`/api/proxies?country=${countryCode}&limit=${requestedCount}`);
+      // Also fetch live buffer to populate the view's list from database without limit
+      const inventoryRes = await fetch(`/api/proxies?country=${countryCode}&limit=0`);
       const invData = await inventoryRes.json();
       if (invData.data && invData.data.length > 0) {
         const mapped: LiveDiscoveredProxy[] = invData.data.map((p: any) => {
@@ -368,26 +367,29 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               <select
                 value={requestedCount}
                 onChange={(e) => setRequestedCount(parseInt(e.target.value, 10))}
-                className="bg-[#141e36] border border-[#202f52] text-xs text-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-400"
+                className="bg-[#141e36] border border-[#202f52] text-xs text-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-400 cursor-pointer font-medium"
               >
-                <option value={50}>50 Proxies</option>
-                <option value={100}>100 Proxies</option>
-                <option value={150}>150 Proxies</option>
-                <option value={200}>200 Proxies</option>
+                <option value={500}>500 Proxies</option>
+                <option value={1000}>1,000 Proxies</option>
+                <option value={2500}>2,500 Proxies</option>
+                <option value={5000}>5,000 Proxies</option>
+                <option value={10000}>10,000 Proxies</option>
+                <option value={25000}>25,000 Proxies (Unlimited)</option>
               </select>
             </div>
           </div>
 
           {/* Export & Copy Actions */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleExport('txt')}
-              disabled={harvestedProxies.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all disabled:opacity-40"
+            <a
+              href={`/api/proxies/export?format=txt&country=${selectedCountry}`}
+              download
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/30 transition-all shadow-md"
+              title="Download all proxies for this country from DB"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export .TXT</span>
-            </button>
+              <span>Export All DB .TXT</span>
+            </a>
 
             <button
               onClick={() => handleExport('json')}

@@ -64,7 +64,7 @@ const liveProxyBufferByCountry = new Map<string, { list: LiveDiscoveredProxy[]; 
  * Fetches real public proxies from verified live public sources.
  * If countryCode is provided (e.g. 'PK', 'IN', 'US'), only fetches for that country.
  */
-export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string): Promise<LiveDiscoveredProxy[]> {
+export async function fetchLivePublicFeeds(maxCount = 25000, countryCode?: string): Promise<LiveDiscoveredProxy[]> {
   const targetCountry = (countryCode && countryCode !== 'ALL' && countryCode !== 'all')
     ? countryCode.trim().toUpperCase()
     : null;
@@ -78,8 +78,8 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
     const timeout = setTimeout(() => controller.abort(), 6500);
 
     const geoUrl = targetCountry
-      ? `https://proxylist.geonode.com/api/proxy-list?limit=150&page=1&sort_by=lastChecked&sort_type=desc&country=${encodeURIComponent(targetCountry)}`
-      : 'https://proxylist.geonode.com/api/proxy-list?limit=150&page=1&sort_by=lastChecked&sort_type=desc';
+      ? `https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc&country=${encodeURIComponent(targetCountry)}`
+      : 'https://proxylist.geonode.com/api/proxy-list?limit=500&page=1&sort_by=lastChecked&sort_type=desc';
 
     const resp = await fetch(geoUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -157,7 +157,7 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
       const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
       const cInfo = targetCountry ? getCountryInfo(targetCountry) : getCountryInfo('US');
 
-      for (const line of lines.slice(0, 120)) {
+      for (const line of lines) {
         const [host, pStr] = line.split(':');
         const port = parseInt(pStr, 10);
         if (!host || isNaN(port) || port <= 0 || port > 65535) continue;
@@ -207,9 +207,9 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
               return countryField.includes(cInfo?.name.toLowerCase() || '') ||
                      countryField.toUpperCase() === targetCountry;
             })
-          : data.slice(0, 100);
+          : data;
 
-        for (const item of filtered.slice(0, 80)) {
+        for (const item of filtered) {
           if (!item.ip || !item.port) continue;
           const host = String(item.ip).trim();
           const port = parseInt(item.port, 10);
@@ -262,7 +262,7 @@ export async function fetchLivePublicFeeds(maxCount = 200, countryCode?: string)
       if (resp.ok) {
         const text = await resp.text();
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        for (const line of lines.slice(0, 60)) {
+        for (const line of lines) {
           const [host, pStr] = line.split(':');
           const port = parseInt(pStr, 10);
           if (!host || isNaN(port)) continue;
@@ -328,15 +328,14 @@ export async function ingestLiveProxiesIntoDatabase(
   owner_id: string = DEFAULT_OWNER_ID,
   markActive: boolean = true
 ): Promise<{ inserted: number; duplicates: number }> {
-  let inserted = 0;
-  let duplicates = 0;
+  const recordsToInsert: any[] = [];
 
   for (const p of proxies) {
     // Validate SSRF security (do not insert private / loopback IPs)
     const sec = await validateEndpointSecurity(p.ip, false);
     if (!sec.isSafe) continue;
 
-    const res = repo.insertProxy({
+    recordsToInsert.push({
       owner_id,
       source_name: p.source,
       normalized_endpoint: p.normalized_endpoint,
@@ -356,13 +355,8 @@ export async function ingestLiveProxiesIntoDatabase(
         (p.country_name || '').toLowerCase().replace(/[^a-z0-9]/g, '-')
       ]
     });
-
-    if (res.is_duplicate) {
-      duplicates++;
-    } else {
-      inserted++;
-    }
   }
 
-  return { inserted, duplicates };
+  const result = repo.insertProxiesBulk(recordsToInsert);
+  return { inserted: result.insertedCount, duplicates: result.duplicateCount };
 }

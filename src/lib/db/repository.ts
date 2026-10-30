@@ -596,15 +596,77 @@ class Repository {
 
     const total = list.length;
     const page = filters.page || 1;
-    const limit = filters.limit || 50;
+    const limit = filters.limit !== undefined ? filters.limit : 50;
+    
+    // limit <= 0 or >= 1000000 indicates unlimited export / query
+    const isUnlimited = limit <= 0 || limit >= 1000000;
     const startIndex = (page - 1) * limit;
-    const paged = list.slice(startIndex, startIndex + limit);
+    const paged = isUnlimited ? list : list.slice(startIndex, startIndex + limit);
 
-    return { data: paged, total, page, limit };
+    return { data: paged, total, page, limit: isUnlimited ? total : limit };
   }
 
   public getProxyById(id: string): ProxyRecord | undefined {
     return this.state.proxies.find(p => p.id === id);
+  }
+
+  public insertProxiesBulk(records: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>[]): { insertedCount: number; duplicateCount: number } {
+    if (!records || records.length === 0) return { insertedCount: 0, duplicateCount: 0 };
+
+    const existingEndpoints = new Set<string>();
+    for (const p of this.state.proxies) {
+      existingEndpoints.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+    }
+
+    const now = new Date().toISOString();
+    let insertedCount = 0;
+    let duplicateCount = 0;
+    const newRecords: ProxyRecord[] = [];
+
+    for (const record of records) {
+      const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
+      if (existingEndpoints.has(key)) {
+        duplicateCount++;
+        continue;
+      }
+
+      existingEndpoints.add(key);
+      const id = `prx-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      
+      let source_name = record.source_name;
+      if (record.source_id && !source_name) {
+        const src = this.state.sources.find(s => s.id === record.source_id);
+        if (src) source_name = src.name;
+      }
+
+      newRecords.push({
+        ...record,
+        id,
+        source_name,
+        consecutive_failures: 0,
+        recovery_count: 0,
+        is_quarantined: false,
+        created_at: now,
+        updated_at: now,
+        next_scheduled_check_at: now,
+        tags: record.tags || []
+      });
+      insertedCount++;
+    }
+
+    if (newRecords.length > 0) {
+      this.state.proxies.unshift(...newRecords);
+      this.addAuditLog({
+        owner_id: records[0].owner_id,
+        action: 'PROXY_CREATED',
+        entity_type: 'PROXY',
+        entity_id: `bulk-${newRecords.length}`,
+        details: { count: newRecords.length, type: 'bulk_stream_ingest' }
+      });
+      this.save();
+    }
+
+    return { insertedCount, duplicateCount };
   }
 
   public insertProxy(record: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>): { record: ProxyRecord; is_duplicate: boolean } {
