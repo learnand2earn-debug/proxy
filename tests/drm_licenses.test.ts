@@ -3,16 +3,18 @@ import { repo } from '../src/lib/db/repository';
 
 describe('DRM License & Single-Site Concurrency Engine', () => {
   it('authenticates master administrator credentials cleanly', () => {
+    const adminUser = process.env.ADMIN_USERNAME || 'websitespark20';
+    const adminPass = process.env.ADMIN_PASSWORD || 'spark78601';
     const auth = repo.authenticate({
-      usernameOrKey: 'websitespark20',
-      password: 'spark78601',
+      usernameOrKey: adminUser,
+      password: adminPass,
       origin: 'http://localhost:3000'
     });
 
     expect(auth.success).toBe(true);
     expect(auth.session).toBeDefined();
     expect(auth.session?.role).toBe('admin');
-    expect(auth.session?.username).toBe('websitespark20');
+    expect(auth.session?.username).toBe(adminUser);
     expect(auth.session?.session_token.startsWith('wsp_admin_')).toBe(true);
   });
 
