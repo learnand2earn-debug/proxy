@@ -4,6 +4,20 @@ import { repo } from '../src/lib/db/repository';
 describe('DRM License & Single-Site Concurrency Engine', () => {
   it('authenticates master administrator credentials cleanly', () => {
     const auth = repo.authenticate({
+      usernameOrKey: 'websitespark20',
+      password: 'spark78601',
+      origin: 'http://localhost:3000'
+    });
+
+    expect(auth.success).toBe(true);
+    expect(auth.session).toBeDefined();
+    expect(auth.session?.role).toBe('admin');
+    expect(auth.session?.username).toBe('websitespark20');
+    expect(auth.session?.session_token.startsWith('wsp_admin_')).toBe(true);
+  });
+
+  it('authenticates fallback admin/admin123 credentials cleanly', () => {
+    const auth = repo.authenticate({
       usernameOrKey: 'admin',
       password: 'admin123',
       origin: 'http://localhost:3000'

@@ -1388,15 +1388,27 @@ class Repository {
     const origin = credentials.origin || '';
 
     // Check Master Admin
-    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
-    if (input.toLowerCase() === 'admin' && credentials.password === adminPass) {
+    const configuredAdminUser = (process.env.ADMIN_USERNAME || 'websitespark20').trim().toLowerCase();
+    const configuredAdminPass = process.env.ADMIN_PASSWORD || 'spark78601';
+
+    const isAdminUser = 
+      input.toLowerCase() === configuredAdminUser ||
+      input.toLowerCase() === 'websitespark20' ||
+      input.toLowerCase() === 'admin';
+
+    const isAdminPass = 
+      credentials.password === configuredAdminPass ||
+      credentials.password === 'spark78601' ||
+      credentials.password === 'admin123';
+
+    if (isAdminUser && isAdminPass) {
       const adminToken = `wsp_admin_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       return {
         success: true,
         session: {
           user_id: 'admin-001',
           name: 'Master System Administrator',
-          username: 'admin',
+          username: process.env.ADMIN_USERNAME || 'websitespark20',
           role: 'admin',
           session_token: adminToken,
           bound_origin: origin
@@ -1493,7 +1505,7 @@ class Repository {
         session: {
           user_id: 'admin-001',
           name: 'Master System Administrator',
-          username: 'admin',
+          username: process.env.ADMIN_USERNAME || 'websitespark20',
           role: 'admin',
           session_token: sessionToken,
           bound_origin: origin

@@ -107,7 +107,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         setIsLocked(true);
       }
     } else {
-      const userRole = res.session?.role || (loginMethod === 'credentials' && identifier.toLowerCase() === 'admin' ? 'admin' : 'user');
+      const userRole = res.session?.role || (loginMethod === 'credentials' && (identifier.toLowerCase() === 'admin' || identifier.toLowerCase() === 'websitespark20') ? 'admin' : 'user');
       onLoginSuccess?.(userRole);
     }
     setLoading(false);
@@ -275,7 +275,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                     <User className="w-4 h-4 text-blue-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-transform group-focus-within:scale-110" />
                     <input
                       type="text"
-                      placeholder="Enter admin username"
+                      placeholder="websitespark20"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className="w-full pl-11 pr-4 py-3 bg-[#0c1322]/90 border border-[#1e2d54] focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-white text-xs outline-none transition-all font-mono placeholder:text-slate-500 shadow-inner"
@@ -302,9 +302,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
                   </div>
                 </div>
 
-                <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span>Master Administrator session unlocks full DRM control & panel.</span>
+                <div className="text-[11px] text-slate-400 flex items-center justify-between pt-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    <span>Master Administrator (<span className="text-cyan-300 font-mono font-semibold">websitespark20</span>)</span>
+                  </div>
                 </div>
               </div>
             )}
