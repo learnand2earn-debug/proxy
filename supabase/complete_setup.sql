@@ -143,3 +143,4 @@ SELECT
     COUNT(*) AS current_rows, 
     'ONLINE & READY' AS status 
 FROM public.proxy_records;
+
