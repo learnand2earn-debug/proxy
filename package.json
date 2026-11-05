@@ -3,13 +3,66 @@
   "version": "1.0.0",
   "private": true,
   "description": "Enterprise AI Proxy Intelligence, Discovery & Monitoring Platform",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "desktop": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:portable": "electron-builder --win portable",
+    "dist:all": "electron-builder --win",
     "worker": "node --loader ts-node/esm worker/index.ts || tsx worker/index.ts || node dist/worker.js",
     "test": "vitest run",
     "lint": "next lint"
+  },
+  "build": {
+    "appId": "com.websitespark.proxyintelligence",
+    "productName": "WebsiteSpark AI Proxy Intelligence",
+    "copyright": "Copyright © 2026 WebsiteSpark Inc.",
+    "directories": {
+      "output": "dist-software"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WebsiteSpark AI Proxy Intelligence",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "files": [
+      "electron/**/*",
+      ".next-desktop/**/*",
+      "public/**/*",
+      "data/**/*",
+      "build/**/*",
+      "package.json",
+      "next.config.js"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/.next-desktop/**",
+      "**/data/**"
+    ]
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -29,6 +82,8 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
