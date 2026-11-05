@@ -178,16 +178,18 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   };
 
   const handleExport = (format: 'txt' | 'json') => {
-    if (harvestedProxies.length === 0) return;
+    // Strictly export verified live proxies only
+    const liveOnly = harvestedProxies.filter(p => p.verified_active);
+    if (liveOnly.length === 0) return;
     let content = '';
     let mime = 'text/plain';
-    let filename = `proxies_${selectedCountry}_${Date.now()}`;
+    let filename = `live_active_proxies_${selectedCountry}_${Date.now()}`;
 
     if (format === 'txt') {
-      content = harvestedProxies.map(p => `${p.ip}:${p.port}`).join('\n');
+      content = liveOnly.map(p => `${p.ip}:${p.port}`).join('\n');
       filename += '.txt';
     } else {
-      content = JSON.stringify(harvestedProxies, null, 2);
+      content = JSON.stringify(liveOnly, null, 2);
       mime = 'application/json';
       filename += '.json';
     }
@@ -381,37 +383,40 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             </div>
           </div>
 
-          {/* Export & Copy Actions */}
+          {/* Export & Copy Actions - Strictly Live Only */}
           <div className="flex items-center gap-2">
             <a
-              href={`/api/proxies/export?format=txt&country=${selectedCountry}`}
+              href={`/api/proxies/export?format=txt&country=${selectedCountry}&status=ACTIVE`}
               download
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/30 transition-all shadow-md"
-              title="Download all proxies for this country from DB"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 transition-all shadow-md"
+              title="Download only 100% verified working LIVE proxies for this country"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export All DB .TXT</span>
+              <span>Export Live DB .TXT</span>
             </a>
 
             <button
               onClick={() => handleExport('json')}
-              disabled={harvestedProxies.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-slate-300 border border-[#233358] transition-all disabled:opacity-40"
+              disabled={harvestedProxies.filter(p => p.verified_active).length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40"
+              title="Export verified active proxies as JSON"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export .JSON</span>
+              <span>Export Live .JSON</span>
             </button>
 
             <button
               onClick={() => {
-                const text = harvestedProxies.map(p => `${p.ip}:${p.port}`).join('\n');
+                const liveList = harvestedProxies.filter(p => p.verified_active);
+                const text = liveList.map(p => `${p.ip}:${p.port}`).join('\n');
                 handleCopy(text, 'all');
               }}
-              disabled={harvestedProxies.length === 0}
+              disabled={harvestedProxies.filter(p => p.verified_active).length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40"
+              title="Copy verified live working IP:Ports"
             >
               {copiedText === 'all' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedText === 'all' ? 'Copied All!' : 'Copy All IP:Ports'}</span>
+              <span>{copiedText === 'all' ? 'Copied Live!' : 'Copy Live IP:Ports'}</span>
             </button>
           </div>
         </div>

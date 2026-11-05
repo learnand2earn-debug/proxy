@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         if (include_credentials && p.username && p.password) {
           return `${p.protocol}://${p.username}:${p.password}@${p.host}:${p.port}`;
         }
-        return `${p.protocol}://${p.host}:${p.port}`;
+        return `${p.host}:${p.port}`;
       });
       return new NextResponse(lines.join('\n'), {
         headers: {

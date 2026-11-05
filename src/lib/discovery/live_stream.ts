@@ -539,3 +539,63 @@ export async function ingestLiveProxiesIntoDatabase(
 
   return { inserted: result.insertedCount, duplicates: result.duplicateCount };
 }
+
+/**
+ * Autonomous 24/7 Perpetual Proxy Harvester Daemon.
+ * Runs continuously in the background Node.js process without interruption.
+ * Even if all browser tabs are closed or users switch tabs, this worker
+ * never stops for a single second. It continuously harvests worldwide feeds,
+ * tests real TCP handshakes, and saves live proxies to the database and Supabase.
+ */
+export function startPerpetualAutonomousHarvester() {
+  if (typeof globalThis !== 'undefined' && (globalThis as any).__WSP_PERPETUAL_HARVESTER_STARTED) {
+    return;
+  }
+  if (typeof globalThis !== 'undefined') {
+    (globalThis as any).__WSP_PERPETUAL_HARVESTER_STARTED = true;
+  }
+
+  const countryCycle = ['ALL', 'PK', 'IN', 'US', 'DE', 'GB', 'BR', 'TR', 'SG', 'FR', 'NL', 'JP', 'CA'];
+  let cycleIndex = 0;
+
+  const cycleHarvest = async () => {
+    try {
+      const country = countryCycle[cycleIndex % countryCycle.length];
+      cycleIndex++;
+
+      // Fetch authentic proxies for current country in rotation
+      const fresh = await fetchLivePublicFeeds(0, country === 'ALL' ? undefined : country);
+      if (fresh && fresh.length > 0) {
+        // Concurrently test TCP handshake on a batch
+        const probeBatch = fresh.slice(0, 20);
+        const tested = await Promise.all(
+          probeBatch.map(async (p) => {
+            const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1200);
+            return {
+              ...p,
+              latency_ms: latencyMs,
+              verified_active: isLive,
+              timestamp: new Date().toISOString()
+            };
+          })
+        );
+
+        // Auto persist real results to local DB and Supabase
+        await ingestLiveProxiesIntoDatabase(tested, DEFAULT_OWNER_ID, true);
+      }
+    } catch {
+      // Ignore network hiccup and continue loop
+    } finally {
+      // Continuous perpetual cycle every 3.5 seconds
+      setTimeout(cycleHarvest, 3500);
+    }
+  };
+
+  // Launch perpetual harvester immediately
+  setTimeout(cycleHarvest, 1000);
+}
+
+// Auto-start harvester when module loads
+if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+  startPerpetualAutonomousHarvester();
+}

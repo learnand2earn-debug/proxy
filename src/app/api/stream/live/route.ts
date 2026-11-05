@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
         }
       }, intervalMs);
 
-      // Heartbeat pulse every 5 seconds to keep connection alive
+      // Heartbeat pulse every 2.5 seconds to keep connection alive and prevent browser tab throttling
       const heartbeatTimer = setInterval(() => {
         if (isClosed) {
           clearInterval(heartbeatTimer);
@@ -149,12 +149,12 @@ export async function GET(req: NextRequest) {
         }
         try {
           controller.enqueue(
-            encoder.encode(`event: ping\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`)
+            encoder.encode(`: keep-alive\nevent: ping\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`)
           );
         } catch {
           clearInterval(heartbeatTimer);
         }
-      }, 5000);
+      }, 2500);
 
       // Cleanup on stream abort
       req.signal.addEventListener('abort', () => {

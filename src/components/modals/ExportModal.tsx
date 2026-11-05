@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Download, FileSpreadsheet, FileJson, FileText, Lock, Globe } from 'lucide-react';
-import { ProxyStatus } from '@/types';
+import { X, Download, FileSpreadsheet, FileJson, FileText, Lock, Globe, CheckCircle2 } from 'lucide-react';
 import { POPULAR_COUNTRIES, ALL_COUNTRIES } from '@/lib/constants/countries';
 
 interface ExportModalProps {
@@ -11,8 +10,7 @@ interface ExportModalProps {
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
-  const [format, setFormat] = useState<'csv' | 'json' | 'txt'>('csv');
-  const [status, setStatus] = useState<string>('ALL');
+  const [format, setFormat] = useState<'csv' | 'json' | 'txt'>('txt');
   const [country, setCountry] = useState<string>('ALL');
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -21,10 +19,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
   const handleDownload = () => {
     setIsExporting(true);
-    let url = `/api/proxies/export?format=${format}`;
-    if (status !== 'ALL') {
-      url += `&status=${status}`;
-    }
+    // Strictly export ACTIVE live working proxies only (closed proxies excluded)
+    let url = `/api/proxies/export?format=${format}&status=ACTIVE`;
     if (country !== 'ALL') {
       url += `&country=${country}`;
     }
@@ -35,7 +31,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     // Trigger download
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `proxy_inventory_${format}_${Date.now()}.${format}`);
+    link.setAttribute('download', `live_active_proxies_${country}_${Date.now()}.${format}`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -58,11 +54,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
         <div className="mb-5">
           <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <Download className="w-4 h-4 text-blue-400" />
-            <span>Export Proxy Inventory</span>
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>Export Live Working Proxies</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Download your verified proxy records in multiple enterprise formats.
+            Download 100% verified working live proxies. Closed proxies are automatically excluded.
           </p>
         </div>
 
@@ -73,6 +69,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
+                onClick={() => setFormat('txt')}
+                className={`p-3 rounded-xl border text-center transition-all ${
+                  format === 'txt'
+                    ? 'border-emerald-500 bg-emerald-600/20 text-white font-semibold'
+                    : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-5 h-5 mx-auto mb-1 text-emerald-400" />
+                <span className="text-xs">TXT List</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setFormat('csv')}
                 className={`p-3 rounded-xl border text-center transition-all ${
                   format === 'csv'
@@ -80,7 +88,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                     : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
                 }`}
               >
-                <FileSpreadsheet className="w-5 h-5 mx-auto mb-1 text-emerald-400" />
+                <FileSpreadsheet className="w-5 h-5 mx-auto mb-1 text-cyan-400" />
                 <span className="text-xs">CSV</span>
               </button>
               <button
@@ -92,20 +100,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                     : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
                 }`}
               >
-                <FileJson className="w-5 h-5 mx-auto mb-1 text-cyan-400" />
+                <FileJson className="w-5 h-5 mx-auto mb-1 text-indigo-400" />
                 <span className="text-xs">JSON</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormat('txt')}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  format === 'txt'
-                    ? 'border-blue-500 bg-blue-600/20 text-white font-semibold'
-                    : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileText className="w-5 h-5 mx-auto mb-1 text-indigo-400" />
-                <span className="text-xs">TXT List</span>
               </button>
             </div>
           </div>
@@ -121,7 +117,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               onChange={(e) => setCountry(e.target.value)}
               className="w-full bg-[#131d35] border border-[#1e2d54] rounded-lg p-2.5 text-xs text-white"
             >
-              <option value="ALL">🌐 All Countries (Global Export)</option>
+              <option value="ALL">🌐 All Countries (Global Genuine Pool)</option>
               <option disabled>── Popular Countries ──</option>
               {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
                 <option key={c.code} value={c.code}>
@@ -137,20 +133,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             </select>
           </div>
 
-          {/* Status Filter */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">Inventory Scope</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-[#131d35] border border-[#1e2d54] rounded-lg p-2.5 text-xs text-white"
-            >
-              <option value="ALL">All Recorded Proxies</option>
-              <option value="ACTIVE">Active Inventory Only</option>
-              <option value="INACTIVE">Inactive Pool Only</option>
-              <option value="INVALID">Quarantined / Invalid Records Only</option>
-              <option value="AUTH_REQUIRED">Authentication Required Only</option>
-            </select>
+          {/* Verified Live Active Only Notice */}
+          <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-xl flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="text-xs text-emerald-300 leading-relaxed">
+              <span className="font-bold">Verified Live Active Only:</span> Closed or dead proxies are permanently excluded from this export.
+            </div>
           </div>
 
           {/* Masking / Credentials Protection Notice */}
@@ -189,10 +177,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               type="button"
               onClick={handleDownload}
               disabled={isExporting}
-              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-glow-sm transition-all flex items-center gap-2"
+              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-glow-sm transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{isExporting ? 'Generating...' : 'Download Export'}</span>
+              <span>{isExporting ? 'Generating...' : 'Download Live Active'}</span>
             </button>
           </div>
         </div>

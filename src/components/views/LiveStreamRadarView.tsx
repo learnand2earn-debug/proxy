@@ -51,13 +51,41 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [viewFilter, setViewFilter] = useState<'live' | 'dead' | 'all'>('live'); // Default show Active section
   
-  const [streamedProxies, setStreamedProxies] = useState<LiveDiscoveredProxy[]>([]);
-  // Full session proxy memory cache: holds ALL streamed proxies without any 150 limit
-  const sessionStreamedMapRef = useRef<Map<string, LiveDiscoveredProxy>>(new Map());
-  const [sessionStreamedCount, setSessionStreamedCount] = useState<number>(0);
+  const [streamedProxies, setStreamedProxies] = useState<LiveDiscoveredProxy[]>(() => {
+    if (typeof window === 'undefined') return [];
+    if (!(window as any).__WSP_RADAR_SESSION_STORE) {
+      (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
+    }
+    const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
+    return store.size > 0 ? Array.from(store.values()).reverse().slice(0, 150) : [];
+  });
 
-  const [totalStreamedCount, setTotalStreamedCount] = useState<number>(0);
-  const [totalLiveCount, setTotalLiveCount] = useState<number>(0);
+  // Persistent singleton store attached to window - survives unmounting, tab switching, and navigation
+  const getSessionMap = (): Map<string, LiveDiscoveredProxy> => {
+    if (typeof window === 'undefined') return new Map();
+    if (!(window as any).__WSP_RADAR_SESSION_STORE) {
+      (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
+    }
+    return (window as any).__WSP_RADAR_SESSION_STORE;
+  };
+
+  const [sessionStreamedCount, setSessionStreamedCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    return getSessionMap().size;
+  });
+
+  const [totalStreamedCount, setTotalStreamedCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    const saved = localStorage.getItem('wsp_radar_packet_count');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const [totalLiveCount, setTotalLiveCount] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    const saved = localStorage.getItem('wsp_radar_live_count');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
   const [totalDeadCount, setTotalDeadCount] = useState<number>(0);
   const [totalDbCount, setTotalDbCount] = useState<number>(0);
 
@@ -100,30 +128,59 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     }
   }, [soundEnabled]);
 
-  // Initial load: sync genuine stats from DB
+  // Initial load: sync genuine stats from DB and listen to visibility changes
   useEffect(() => {
-    const savedCount = typeof window !== 'undefined' ? localStorage.getItem('wsp_radar_packet_count') : null;
-    if (savedCount) {
-      setTotalStreamedCount(parseInt(savedCount, 10));
-    }
-
     const fetchStats = () => {
       fetch('/api/stats')
         .then(r => r.json())
         .then(stats => {
           if (stats) {
-            if (stats.total_proxies !== undefined) setTotalDbCount(stats.total_proxies);
-            if (stats.active_proxies !== undefined) setTotalLiveCount(stats.active_proxies);
-            if (stats.inactive_proxies !== undefined) setTotalDeadCount(stats.inactive_proxies);
-            setTotalStreamedCount(prev => Math.max(prev, stats.total_proxies || 0));
+            const dbTotal = stats.total_discovered ?? stats.total_proxies ?? 0;
+            const dbLive = stats.active_count ?? stats.active_proxies ?? 0;
+            const dbDead = stats.inactive_count ?? stats.inactive_proxies ?? 0;
+
+            if (dbTotal > 0) {
+              setTotalDbCount(dbTotal);
+              setTotalStreamedCount(prev => {
+                const next = Math.max(prev, dbTotal, getSessionMap().size);
+                if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
+                return next;
+              });
+            }
+            if (dbLive > 0) {
+              setTotalLiveCount(prev => {
+                const next = Math.max(prev, dbLive);
+                if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_live_count', String(next));
+                return next;
+              });
+            }
+            if (dbDead > 0) {
+              setTotalDeadCount(dbDead);
+            }
           }
         })
         .catch(() => {});
     };
 
     fetchStats();
-    const syncTimer = setInterval(fetchStats, 6000);
-    return () => clearInterval(syncTimer);
+    const syncTimer = setInterval(fetchStats, 4000);
+
+    // When user switches browser tabs or returns, immediately refresh stats without resetting
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchStats();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(syncTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
   }, []);
 
   // Background auto-recovery worker: re-tests offline proxies and promotes any that turn ON to the active section
@@ -186,10 +243,11 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       eventSource.addEventListener('initial_burst', (event) => {
         try {
           const list: LiveDiscoveredProxy[] = JSON.parse(event.data);
+          const store = getSessionMap();
           
           // Accumulate into unbounded session memory store
-          list.forEach(p => sessionStreamedMapRef.current.set(p.normalized_endpoint, p));
-          setSessionStreamedCount(sessionStreamedMapRef.current.size);
+          list.forEach(p => store.set(p.normalized_endpoint, p));
+          setSessionStreamedCount(store.size);
 
           setStreamedProxies(prev => {
             const combined = [...list, ...prev];
@@ -201,13 +259,17 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             }).slice(0, 150);
           });
 
-          // Update counts
+          // Monotonically increase counts so tab switching never resets numbers
           const liveInList = list.filter(p => p.verified_active).length;
           const deadInList = list.length - liveInList;
-          setTotalLiveCount(prev => prev + liveInList);
+          setTotalLiveCount(prev => {
+            const next = prev + liveInList;
+            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_live_count', String(next));
+            return next;
+          });
           setTotalDeadCount(prev => prev + deadInList);
           setTotalStreamedCount(prev => {
-            const next = Math.max(prev + list.length, sessionStreamedMapRef.current.size);
+            const next = Math.max(prev + list.length, store.size);
             if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
             return next;
           });
@@ -220,22 +282,27 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       eventSource.addEventListener('proxy_incoming', (event) => {
         try {
           const proxy: LiveDiscoveredProxy = JSON.parse(event.data);
+          const store = getSessionMap();
           
           // Accumulate proxy in full unbounded session store
-          sessionStreamedMapRef.current.set(proxy.normalized_endpoint, proxy);
-          setSessionStreamedCount(sessionStreamedMapRef.current.size);
+          store.set(proxy.normalized_endpoint, proxy);
+          setSessionStreamedCount(store.size);
 
           // Sliding window of 150 items so browser DOM never lags or crashes
           setStreamedProxies(prev => [proxy, ...prev.slice(0, 149)]);
           setTotalStreamedCount(prev => {
-            const next = Math.max(prev + 1, sessionStreamedMapRef.current.size);
+            const next = Math.max(prev + 1, store.size);
             if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
             return next;
           });
           setTotalDbCount(prev => prev + 1);
 
           if (proxy.verified_active) {
-            setTotalLiveCount(prev => prev + 1);
+            setTotalLiveCount(prev => {
+              const next = prev + 1;
+              if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_live_count', String(next));
+              return next;
+            });
             playBeep(980);
           } else {
             setTotalDeadCount(prev => prev + 1);
@@ -293,19 +360,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     }
   };
 
-  // Quick Export Streamed Proxies or Entire Database
-  const handleExportStream = (format: 'txt' | 'json', mode: 'stream' | 'all_db' | 'live_only' = 'all_db') => {
-    if (mode === 'all_db') {
-      const link = document.createElement('a');
-      link.href = `/api/proxies/export?format=${format}&status=ALL`;
-      link.setAttribute('download', `proxy_inventory_all_${Date.now()}.${format}`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    }
-
-    if (mode === 'live_only') {
+  // Export strictly 100% verified LIVE active proxies (closed/inactive strictly excluded)
+  const handleExportLiveProxies = (format: 'txt' | 'json', mode: 'live_streamed' | 'live_all_db' = 'live_streamed') => {
+    if (mode === 'live_all_db') {
       const link = document.createElement('a');
       link.href = `/api/proxies/export?format=${format}&status=ACTIVE`;
       link.setAttribute('download', `proxy_inventory_live_active_${Date.now()}.${format}`);
@@ -315,37 +372,30 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       return;
     }
 
-    let exportList: LiveDiscoveredProxy[] = [];
-    if (sessionStreamedMapRef.current.size > 0) {
-      const allSessionList = Array.from(sessionStreamedMapRef.current.values());
-      exportList = viewFilter === 'all'
-        ? allSessionList
-        : viewFilter === 'live'
-        ? allSessionList.filter(p => p.verified_active)
-        : allSessionList.filter(p => !p.verified_active);
-    } else {
-      exportList = viewFilter === 'all' 
-        ? streamedProxies 
-        : viewFilter === 'live' 
-        ? streamedProxies.filter(p => p.verified_active) 
-        : streamedProxies.filter(p => !p.verified_active);
-    }
+    // Export LIVE working proxies from session store
+    const store = getSessionMap();
+    const liveList = Array.from(store.values()).filter(p => p.verified_active);
 
-    if (exportList.length === 0) {
-      // If session buffer is empty, download from database directly
-      handleExportStream(format, 'all_db');
+    if (liveList.length === 0) {
+      // Fallback: if stream session has no live proxies yet, download live from database directly
+      const link = document.createElement('a');
+      link.href = `/api/proxies/export?format=${format}&status=ACTIVE`;
+      link.setAttribute('download', `proxy_inventory_live_active_${Date.now()}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       return;
     }
 
     let content = '';
     let mime = 'text/plain';
-    let filename = `streamed_proxies_${exportList.length}_${Date.now()}`;
+    let filename = `live_active_streamed_${liveList.length}_proxies_${Date.now()}`;
 
     if (format === 'txt') {
-      content = exportList.map(p => `${p.ip}:${p.port}`).join('\n');
+      content = liveList.map(p => `${p.ip}:${p.port}`).join('\n');
       filename += '.txt';
     } else {
-      content = JSON.stringify(exportList, null, 2);
+      content = JSON.stringify(liveList, null, 2);
       mime = 'application/json';
       filename += '.json';
     }
@@ -710,28 +760,19 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
           </label>
 
           <button
-            onClick={() => handleExportStream('txt', 'live_only')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 transition-all shadow-md"
-            title="Download only 100% verified working LIVE proxies from database"
+            onClick={() => handleExportLiveProxies('txt', 'live_streamed')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all shadow-md cursor-pointer"
+            title="Download only 100% verified working LIVE proxies streamed in this session (Closed strictly excluded)"
           >
-            <Download className="w-3.5 h-3.5" /> Export Live Active ({totalLiveCount.toLocaleString()} .TXT)
+            <Download className="w-3.5 h-3.5 text-cyan-400" /> Export Live Streamed ({liveProxies.length > 0 ? liveProxies.length.toLocaleString() : 'Live'} .TXT)
           </button>
 
           <button
-            onClick={() => handleExportStream('txt', 'all_db')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border border-cyan-400/30 transition-all shadow-md"
-            title="Download entire database inventory (All Tested)"
+            onClick={() => handleExportLiveProxies('txt', 'live_all_db')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 transition-all shadow-md cursor-pointer"
+            title="Download all 100% verified working LIVE proxies from database (Closed strictly excluded)"
           >
-            <Download className="w-3.5 h-3.5" /> Export All DB ({totalDbCount.toLocaleString()} Total .TXT)
-          </button>
-
-          <button
-            onClick={() => handleExportStream('txt', 'stream')}
-            disabled={sessionStreamedCount === 0 && displayedProxies.length === 0 && totalStreamedCount === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all disabled:opacity-40"
-            title={`Export all ${Math.max(sessionStreamedCount, totalStreamedCount, displayedProxies.length).toLocaleString()} proxies streamed in this session`}
-          >
-            <Download className="w-3.5 h-3.5" /> Export Streamed ({Math.max(sessionStreamedCount, totalStreamedCount, displayedProxies.length).toLocaleString()})
+            <Download className="w-3.5 h-3.5" /> Export All Live Active ({totalLiveCount.toLocaleString()} .TXT)
           </button>
 
           <button
