@@ -137,3 +137,36 @@ export async function getSupabaseProxyCount(owner_id?: string): Promise<number |
     return null;
   }
 }
+
+/**
+ * Purges stale closed/inactive proxies from Supabase older than 24 hours.
+ * Strictly preserves all ACTIVE proxies forever!
+ */
+export async function deleteStaleClosedProxiesFromSupabase(maxAgeMs = 24 * 60 * 60 * 1000): Promise<number> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return 0;
+
+  try {
+    const cutoffTime = new Date(Date.now() - maxAgeMs).toISOString();
+    // Delete where status is NOT ACTIVE and created_at < cutoffTime
+    const query = `${url}/rest/v1/proxy_records?current_status=neq.ACTIVE&created_at=lt.${cutoffTime}`;
+    const res = await fetch(query, {
+      method: 'DELETE',
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Prefer': 'return=representation'
+      }
+    });
+
+    if (res.ok) {
+      const deleted = await res.json();
+      return Array.isArray(deleted) ? deleted.length : 0;
+    }
+    return 0;
+  } catch (err: any) {
+    console.warn('[Supabase Prune Closed Warning]:', err.message);
+    return 0;
+  }
+}

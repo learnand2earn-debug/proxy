@@ -583,6 +583,11 @@ export function startPerpetualAutonomousHarvester() {
         // Auto persist real results to local DB and Supabase
         await ingestLiveProxiesIntoDatabase(tested, DEFAULT_OWNER_ID, true);
       }
+
+      // Automatically reset & purge closed proxies older than 24 hours every 25 cycles (Live proxies strictly preserved!)
+      if (cycleIndex % 25 === 0) {
+        repo.pruneStaleClosedProxies(24 * 60 * 60 * 1000);
+      }
     } catch {
       // Ignore network hiccup and continue loop
     } finally {

@@ -21,7 +21,7 @@ import {
   LicenseStats
 } from '@/types';
 import { parseProxyString, maskEndpoint } from '../validation/parser';
-import { isSupabaseEnabled, insertProxiesToSupabase, getSupabaseProxyCount } from './supabase';
+import { isSupabaseEnabled, insertProxiesToSupabase, getSupabaseProxyCount, deleteStaleClosedProxiesFromSupabase } from './supabase';
 
 // Default Owner ID for single-tenant / local mode
 export const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
@@ -1014,6 +1014,48 @@ class Repository {
 
     this.save();
     return true;
+  }
+
+  /**
+   * Automatically resets / purges closed and inactive proxies that are older than 24 hours.
+   * LIVE ACTIVE PROXIES ARE PERMANENTLY PRESERVED AND NEVER RESET!
+   */
+  public pruneStaleClosedProxies(maxAgeMs: number = 24 * 60 * 60 * 1000): { prunedCount: number; activePreservedCount: number } {
+    const now = Date.now();
+    const initialCount = this.state.proxies.length;
+
+    // Strict filter:
+    // 1. If proxy is ACTIVE -> KEEP FOREVER (never reset or delete)
+    // 2. If proxy is NOT ACTIVE (closed/inactive/invalid) -> only keep within 24h window
+    this.state.proxies = this.state.proxies.filter(p => {
+      if (p.current_status === 'ACTIVE') {
+        return true; // LIVE proxies are strictly preserved!
+      }
+
+      const timestamp = new Date(p.last_checked_at || p.updated_at || p.created_at).getTime();
+      const age = now - timestamp;
+      const isOlderThan24h = age > maxAgeMs;
+
+      if (isOlderThan24h) {
+        // Prune from endpoint set so fresh live tests can re-evaluate it in future
+        const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
+        this.endpointSet.delete(key);
+        return false; // Prune!
+      }
+
+      return true; // Keep recent closed proxy for 24h retest window
+    });
+
+    const prunedCount = initialCount - this.state.proxies.length;
+    if (prunedCount > 0) {
+      this.save();
+      if (isSupabaseEnabled()) {
+        deleteStaleClosedProxiesFromSupabase(maxAgeMs).catch(() => {});
+      }
+    }
+
+    const activePreservedCount = this.state.proxies.filter(p => p.current_status === 'ACTIVE').length;
+    return { prunedCount, activePreservedCount };
   }
 
   // --- SOURCES ---

@@ -66,7 +66,21 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     if (!(window as any).__WSP_RADAR_SESSION_STORE) {
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
-    return (window as any).__WSP_RADAR_SESSION_STORE;
+    const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
+
+    // Auto-reset / purge closed proxies older than 24 hours; LIVE proxies are strictly preserved forever!
+    const now = Date.now();
+    const maxAgeMs = 24 * 60 * 60 * 1000;
+    for (const [endpoint, p] of store.entries()) {
+      if (!p.verified_active) {
+        const t = new Date(p.timestamp).getTime();
+        if (now - t > maxAgeMs) {
+          store.delete(endpoint);
+        }
+      }
+    }
+
+    return store;
   };
 
   const [sessionStreamedCount, setSessionStreamedCount] = useState<number>(() => {
@@ -475,13 +489,16 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
 
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 tracking-wide uppercase">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
                 Global Pipeline • All Countries Active
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 font-bold">
                 Auto-Recovery Loop Engaged
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-mono text-violet-300 bg-violet-500/10 border border-violet-500/30 font-bold">
+                🛡️ 24h Closed Auto-Reset Active (Live Proxies Retained Forever)
               </span>
             </div>
             <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
