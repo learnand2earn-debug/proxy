@@ -374,7 +374,9 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 <option value={2500}>2,500 Proxies</option>
                 <option value={5000}>5,000 Proxies</option>
                 <option value={10000}>10,000 Proxies</option>
-                <option value={25000}>25,000 Proxies (Unlimited)</option>
+                <option value={25000}>25,000 Proxies</option>
+                <option value={100000}>100,000 Proxies</option>
+                <option value={0}>Unlimited Continuous Stream (No Cap)</option>
               </select>
             </div>
           </div>

@@ -1,16 +1,16 @@
 import fs from 'fs';
 import path from 'path';
-import { 
-  ProxyRecord, 
-  ProxySource, 
-  ProxyCheckResult, 
-  StatusTransition, 
-  CheckHistoryItem, 
-  NotificationItem, 
-  MonitoringSchedule, 
-  BrowserConnection, 
-  AuditLogItem, 
-  ApplicationSettings, 
+import {
+  ProxyRecord,
+  ProxySource,
+  ProxyCheckResult,
+  StatusTransition,
+  CheckHistoryItem,
+  NotificationItem,
+  MonitoringSchedule,
+  BrowserConnection,
+  AuditLogItem,
+  ApplicationSettings,
   DashboardStats,
   ProxyStatus,
   ProxyProtocol,
@@ -21,6 +21,7 @@ import {
   LicenseStats
 } from '@/types';
 import { parseProxyString, maskEndpoint } from '../validation/parser';
+import { isSupabaseEnabled, insertProxiesToSupabase, getSupabaseProxyCount } from './supabase';
 
 // Default Owner ID for single-tenant / local mode
 export const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
@@ -474,30 +475,73 @@ export function getInitialSeedLicenses(): LicenseRecord[] {
 class Repository {
   private state: DBState;
   private activeAdminSessions = new Map<string, { createdAt: number; expiresAt: number }>();
+  private endpointSet = new Set<string>();
+  private saveTimeout: NodeJS.Timeout | null = null;
+  private pendingSaves = 0;
 
   constructor() {
     this.state = this.loadState();
   }
 
   private loadState(): DBState {
+    const BACKUP_FILE = path.join(DATA_DIR, 'store.json.bak');
     try {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
+
+      // 1. Primary store.json read
       if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (!parsed.licenses || !Array.isArray(parsed.licenses) || parsed.licenses.length === 0) {
-          parsed.licenses = getInitialSeedLicenses();
-          this.saveStateDirect(parsed);
+        const raw = fs.readFileSync(DATA_FILE, 'utf-8').trim();
+        if (raw.length > 20) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.proxies)) {
+              if (!parsed.licenses || !Array.isArray(parsed.licenses) || parsed.licenses.length === 0) {
+                parsed.licenses = getInitialSeedLicenses();
+              }
+              for (const p of parsed.proxies) {
+                if (p.normalized_endpoint) {
+                  this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+                }
+              }
+              return parsed;
+            }
+          } catch (jsonErr) {
+            console.warn('[Repository] store.json parse warning, checking backup store.json.bak:', jsonErr);
+          }
         }
-        return parsed;
+      }
+
+      // 2. Fallback: Restore from backup file
+      if (fs.existsSync(BACKUP_FILE)) {
+        const rawBak = fs.readFileSync(BACKUP_FILE, 'utf-8').trim();
+        if (rawBak.length > 20) {
+          try {
+            const parsedBak = JSON.parse(rawBak);
+            if (parsedBak && Array.isArray(parsedBak.proxies)) {
+              console.log('[Repository] Successfully recovered proxy database from store.json.bak!');
+              for (const p of parsedBak.proxies) {
+                if (p.normalized_endpoint) {
+                  this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+                }
+              }
+              this.saveStateDirect(parsedBak);
+              return parsedBak;
+            }
+          } catch { }
+        }
       }
     } catch (e) {
       console.warn('Failed to load existing store.json, using seed data:', e);
     }
 
     const initial = initializeSeedData();
+    for (const p of initial.proxies) {
+      if (p.normalized_endpoint) {
+        this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+      }
+    }
     this.saveStateDirect(initial);
     return initial;
   }
@@ -507,14 +551,54 @@ class Repository {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(DATA_FILE, JSON.stringify(s, null, 2), 'utf-8');
+      const BACKUP_FILE = path.join(DATA_DIR, 'store.json.bak');
+      const TEMP_FILE = path.join(DATA_DIR, 'store.json.tmp');
+
+      const jsonStr = JSON.stringify(s);
+
+      // Write to temp file first to prevent partial write corruption
+      fs.writeFileSync(TEMP_FILE, jsonStr, 'utf-8');
+
+      // Keep backup of prior working state
+      if (fs.existsSync(DATA_FILE)) {
+        try {
+          fs.copyFileSync(DATA_FILE, BACKUP_FILE);
+        } catch { }
+      }
+
+      // Atomic copy & unlink
+      fs.copyFileSync(TEMP_FILE, DATA_FILE);
+      try {
+        fs.unlinkSync(TEMP_FILE);
+      } catch { }
     } catch (err) {
       console.error('Failed to write store.json:', err);
     }
   }
 
-  private save() {
-    this.saveStateDirect(this.state);
+  public save(immediate = false) {
+    this.pendingSaves++;
+    if (immediate || this.pendingSaves >= 20) {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      this.pendingSaves = 0;
+      this.saveStateDirect(this.state);
+      return;
+    }
+
+    if (!this.saveTimeout) {
+      this.saveTimeout = setTimeout(() => {
+        this.saveTimeout = null;
+        this.pendingSaves = 0;
+        this.saveStateDirect(this.state);
+      }, 1500);
+    }
+  }
+
+  public getTotalProxyCount(): number {
+    return this.state.proxies.length;
   }
 
   // --- PROXIES ---
@@ -560,7 +644,7 @@ class Repository {
 
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      list = list.filter(p => 
+      list = list.filter(p =>
         p.normalized_endpoint.toLowerCase().includes(q) ||
         p.host.toLowerCase().includes(q) ||
         p.port.toString().includes(q) ||
@@ -598,7 +682,7 @@ class Repository {
     const total = list.length;
     const page = filters.page || 1;
     const limit = filters.limit !== undefined ? filters.limit : 50;
-    
+
     // limit <= 0 or >= 1000000 indicates unlimited export / query
     const isUnlimited = limit <= 0 || limit >= 1000000;
     const startIndex = (page - 1) * limit;
@@ -614,11 +698,6 @@ class Repository {
   public insertProxiesBulk(records: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>[]): { insertedCount: number; duplicateCount: number } {
     if (!records || records.length === 0) return { insertedCount: 0, duplicateCount: 0 };
 
-    const existingEndpoints = new Set<string>();
-    for (const p of this.state.proxies) {
-      existingEndpoints.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
-    }
-
     const now = new Date().toISOString();
     let insertedCount = 0;
     let duplicateCount = 0;
@@ -626,14 +705,24 @@ class Repository {
 
     for (const record of records) {
       const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
-      if (existingEndpoints.has(key)) {
+      if (this.endpointSet.has(key)) {
         duplicateCount++;
+        // Update live status and latency if re-probed
+        const existing = this.state.proxies.find(
+          p => p.owner_id === record.owner_id && p.normalized_endpoint.toLowerCase() === record.normalized_endpoint.toLowerCase()
+        );
+        if (existing && record.current_status) {
+          existing.current_status = record.current_status;
+          if (record.last_latency_ms) existing.last_latency_ms = record.last_latency_ms;
+          existing.last_checked_at = now;
+          if (record.current_status === 'ACTIVE') existing.last_successful_check_at = now;
+        }
         continue;
       }
 
-      existingEndpoints.add(key);
+      this.endpointSet.add(key);
       const id = `prx-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-      
+
       let source_name = record.source_name;
       if (record.source_id && !source_name) {
         const src = this.state.sources.find(s => s.id === record.source_id);
@@ -657,31 +746,29 @@ class Repository {
 
     if (newRecords.length > 0) {
       this.state.proxies.unshift(...newRecords);
-      this.addAuditLog({
-        owner_id: records[0].owner_id,
-        action: 'PROXY_CREATED',
-        entity_type: 'PROXY',
-        entity_id: `bulk-${newRecords.length}`,
-        details: { count: newRecords.length, type: 'bulk_stream_ingest' }
-      });
       this.save();
+
+      // Async sync to Supabase if credentials configured
+      if (isSupabaseEnabled()) {
+        insertProxiesToSupabase(newRecords, records[0].owner_id).catch(() => { });
+      }
     }
 
     return { insertedCount, duplicateCount };
   }
 
   public insertProxy(record: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>): { record: ProxyRecord; is_duplicate: boolean } {
-    const existing = this.state.proxies.find(
-      p => p.owner_id === record.owner_id && p.normalized_endpoint.toLowerCase() === record.normalized_endpoint.toLowerCase()
-    );
-
-    if (existing) {
-      return { record: existing, is_duplicate: true };
+    const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
+    if (this.endpointSet.has(key)) {
+      const existing = this.state.proxies.find(
+        p => p.owner_id === record.owner_id && p.normalized_endpoint.toLowerCase() === record.normalized_endpoint.toLowerCase()
+      );
+      if (existing) return { record: existing, is_duplicate: true };
     }
 
     const id = `prx-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
-    
+
     // Look up source name if present
     let source_name = record.source_name;
     if (record.source_id && !source_name) {
@@ -795,8 +882,8 @@ class Repository {
 
       // Auto-quarantine threshold check
       if (
-        this.state.settings.auto_quarantine_enabled && 
-        proxy.consecutive_failures >= this.state.settings.quarantine_threshold_failures && 
+        this.state.settings.auto_quarantine_enabled &&
+        proxy.consecutive_failures >= this.state.settings.quarantine_threshold_failures &&
         !proxy.is_quarantined
       ) {
         proxy.is_quarantined = true;
@@ -1075,7 +1162,7 @@ class Repository {
   // --- DASHBOARD STATS ---
   public getDashboardStats(owner_id: string = DEFAULT_OWNER_ID): DashboardStats {
     const userProxies = this.state.proxies.filter(p => p.owner_id === owner_id);
-    
+
     let active = 0;
     let inactive = 0;
     let invalid = 0;
@@ -1138,8 +1225,8 @@ class Repository {
     }).length;
 
     const avgLatency = latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0;
-    const uptimePercentage = userProxies.length > 0 
-      ? Math.round((active / (active + inactive || 1)) * 100) 
+    const uptimePercentage = userProxies.length > 0
+      ? Math.round((active / (active + inactive || 1)) * 100)
       : 100;
 
     // Real 7-day trend calculation from actual check_history & transitions
@@ -1152,13 +1239,13 @@ class Repository {
     for (let dayOffset = 6; dayOffset >= 0; dayOffset--) {
       const targetDate = new Date(now.getTime() - dayOffset * 86400000).toDateString();
 
-      const dayChecks = this.state.check_history.filter(c => 
+      const dayChecks = this.state.check_history.filter(c =>
         new Date(c.check_timestamp).toDateString() === targetDate
       );
       const dayActive = dayChecks.filter(c => c.status === 'ACTIVE').length;
       const dayInactive = dayChecks.filter(c => c.status === 'INACTIVE').length;
 
-      const dayRecoveries = this.state.transitions.filter(t => 
+      const dayRecoveries = this.state.transitions.filter(t =>
         new Date(t.transitioned_at).toDateString() === targetDate &&
         t.from_status === 'INACTIVE' && t.to_status === 'ACTIVE'
       ).length;
@@ -1225,7 +1312,7 @@ class Repository {
     }
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      list = list.filter(l => 
+      list = list.filter(l =>
         l.customer_name.toLowerCase().includes(q) ||
         l.customer_username.toLowerCase().includes(q) ||
         l.license_key.toLowerCase().includes(q) ||
@@ -1264,10 +1351,10 @@ class Repository {
     const rand1 = Math.random().toString(36).substring(2, 6).toUpperCase();
     const rand2 = Math.random().toString(36).substring(2, 6).toUpperCase();
     const license_key = `WSP-${plan.toUpperCase()}-${rand1}-${rand2}`;
-    
+
     const username = data.customer_username?.trim() || `user_${rand1.toLowerCase()}${rand2.toLowerCase()}`;
     const password = data.password || `Pass_${rand1}${rand2}!`;
-    
+
     const now = new Date();
     let expiresDate: Date;
     if (plan === 'lifetime') {
@@ -1334,9 +1421,9 @@ class Repository {
     lic.active_session_token = undefined;
     this.save();
 
-    return { 
-      success: true, 
-      message: `Origin lock '${oldOrigin}' cleared successfully. License can now bind to a new site.` 
+    return {
+      success: true,
+      message: `Origin lock '${oldOrigin}' cleared successfully. License can now bind to a new site.`
     };
   }
 
@@ -1392,12 +1479,12 @@ class Repository {
     const configuredAdminUser = (process.env.ADMIN_USERNAME || 'websitespark20').trim().toLowerCase();
     const configuredAdminPass = process.env.ADMIN_PASSWORD || 'spark78601';
 
-    const isAdminUser = 
+    const isAdminUser =
       input.toLowerCase() === configuredAdminUser ||
       input.toLowerCase() === 'websitespark20' ||
       input.toLowerCase() === 'admin';
 
-    const isAdminPass = 
+    const isAdminPass =
       credentials.password === configuredAdminPass ||
       credentials.password === 'spark78601' ||
       credentials.password === 'admin123';
@@ -1423,7 +1510,7 @@ class Repository {
     }
 
     // Customer Lookup: match license_key OR username
-    const lic = (this.state.licenses || []).find(l => 
+    const lic = (this.state.licenses || []).find(l =>
       l.license_key.toUpperCase() === input.toUpperCase() ||
       l.customer_username.toLowerCase() === input.toLowerCase()
     );
@@ -1439,9 +1526,9 @@ class Repository {
 
     // Status checks
     if (lic.status === 'REVOKED') {
-      return { 
-        success: false, 
-        error: 'Access Denied: This license has been revoked by administration. Contact support.' 
+      return {
+        success: false,
+        error: 'Access Denied: This license has been revoked by administration. Contact support.'
       };
     }
 
@@ -1449,9 +1536,9 @@ class Repository {
     if (lic.plan_type !== 'lifetime' && new Date(lic.expires_at).getTime() < Date.now()) {
       lic.status = 'EXPIRED';
       this.save();
-      return { 
-        success: false, 
-        error: `Subscription Expired: This license expired on ${new Date(lic.expires_at).toLocaleDateString()}. Please renew.` 
+      return {
+        success: false,
+        error: `Subscription Expired: This license expired on ${new Date(lic.expires_at).toLocaleDateString()}. Please renew.`
       };
     }
 
