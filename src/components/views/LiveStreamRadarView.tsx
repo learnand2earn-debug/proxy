@@ -66,22 +66,12 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     if (!(window as any).__WSP_RADAR_SESSION_STORE) {
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
-    const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
-
-    // Auto-reset / purge closed proxies older than 24 hours; LIVE proxies are strictly preserved forever!
-    const now = Date.now();
-    const maxAgeMs = 24 * 60 * 60 * 1000;
-    for (const [endpoint, p] of store.entries()) {
-      if (!p.verified_active) {
-        const t = new Date(p.timestamp).getTime();
-        if (now - t > maxAgeMs) {
-          store.delete(endpoint);
-        }
-      }
-    }
-
-    return store;
+    return (window as any).__WSP_RADAR_SESSION_STORE;
   };
+
+  // High-performance batching buffer to eliminate React re-render lag and browser freezing
+  const pendingIncomingRef = useRef<LiveDiscoveredProxy[]>([]);
+  const lastStorageSyncRef = useRef<number>(Date.now());
 
   const [sessionStreamedCount, setSessionStreamedCount] = useState<number>(() => {
     if (typeof window === 'undefined') return 0;
@@ -244,6 +234,60 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     return () => clearInterval(interval);
   }, [retestOfflinePool]);
 
+  // Periodic background purge for closed proxies older than 24 hours (Zero UI freezing!)
+  useEffect(() => {
+    const pruneTimer = setInterval(() => {
+      const store = getSessionMap();
+      const now = Date.now();
+      const maxAgeMs = 24 * 60 * 60 * 1000;
+      store.forEach((p, endpoint) => {
+        if (!p.verified_active) {
+          const t = new Date(p.timestamp).getTime();
+          if (now - t > maxAgeMs) {
+            store.delete(endpoint);
+          }
+        }
+      });
+    }, 60000);
+    return () => clearInterval(pruneTimer);
+  }, []);
+
+  // High-performance 150ms buffer flusher: combines incoming proxies into smooth 60fps frame renders
+  useEffect(() => {
+    if (!isPlaying) return;
+    const flushTimer = setInterval(() => {
+      if (pendingIncomingRef.current.length === 0) return;
+      const batch = pendingIncomingRef.current.splice(0, pendingIncomingRef.current.length);
+      const store = getSessionMap();
+
+      let liveInc = 0;
+      let deadInc = 0;
+      for (const p of batch) {
+        store.set(p.normalized_endpoint, p);
+        if (p.verified_active) liveInc++;
+        else deadInc++;
+      }
+
+      setStreamedProxies(prev => {
+        const combined = [...batch.reverse(), ...prev];
+        return combined.slice(0, 100);
+      });
+
+      setSessionStreamedCount(store.size);
+      if (liveInc > 0) setTotalLiveCount(prev => prev + liveInc);
+      if (deadInc > 0) setTotalDeadCount(prev => prev + deadInc);
+      setTotalStreamedCount(prev => prev + batch.length);
+      setTotalDbCount(prev => prev + batch.length);
+
+      if (Date.now() - lastStorageSyncRef.current > 3000) {
+        lastStorageSyncRef.current = Date.now();
+        localStorage.setItem('wsp_radar_packet_count', String(store.size));
+      }
+    }, 150);
+
+    return () => clearInterval(flushTimer);
+  }, [isPlaying]);
+
   // Connect to SSE Stream (filtered by country & protocol)
   useEffect(() => {
     if (!isPlaying) return;
@@ -259,7 +303,6 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
           const list: LiveDiscoveredProxy[] = JSON.parse(event.data);
           const store = getSessionMap();
           
-          // Accumulate into unbounded session memory store
           list.forEach(p => store.set(p.normalized_endpoint, p));
           setSessionStreamedCount(store.size);
 
@@ -270,23 +313,14 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               if (seen.has(p.normalized_endpoint)) return false;
               seen.add(p.normalized_endpoint);
               return true;
-            }).slice(0, 150);
+            }).slice(0, 100);
           });
 
-          // Monotonically increase counts so tab switching never resets numbers
           const liveInList = list.filter(p => p.verified_active).length;
           const deadInList = list.length - liveInList;
-          setTotalLiveCount(prev => {
-            const next = prev + liveInList;
-            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_live_count', String(next));
-            return next;
-          });
+          setTotalLiveCount(prev => prev + liveInList);
           setTotalDeadCount(prev => prev + deadInList);
-          setTotalStreamedCount(prev => {
-            const next = Math.max(prev + list.length, store.size);
-            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
-            return next;
-          });
+          setTotalStreamedCount(prev => Math.max(prev + list.length, store.size));
           setTotalDbCount(prev => prev + list.length);
         } catch (e) {
           console.error('Error parsing initial burst:', e);
@@ -296,30 +330,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       eventSource.addEventListener('proxy_incoming', (event) => {
         try {
           const proxy: LiveDiscoveredProxy = JSON.parse(event.data);
-          const store = getSessionMap();
-          
-          // Accumulate proxy in full unbounded session store
-          store.set(proxy.normalized_endpoint, proxy);
-          setSessionStreamedCount(store.size);
-
-          // Sliding window of 150 items so browser DOM never lags or crashes
-          setStreamedProxies(prev => [proxy, ...prev.slice(0, 149)]);
-          setTotalStreamedCount(prev => {
-            const next = Math.max(prev + 1, store.size);
-            if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_packet_count', String(next));
-            return next;
-          });
-          setTotalDbCount(prev => prev + 1);
-
+          pendingIncomingRef.current.push(proxy);
           if (proxy.verified_active) {
-            setTotalLiveCount(prev => {
-              const next = prev + 1;
-              if (typeof window !== 'undefined') localStorage.setItem('wsp_radar_live_count', String(next));
-              return next;
-            });
             playBeep(980);
-          } else {
-            setTotalDeadCount(prev => prev + 1);
           }
         } catch (e) {
           console.error('Error parsing live proxy:', e);

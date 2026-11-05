@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Globe, 
   Zap, 
@@ -18,7 +18,9 @@ import {
   Cpu,
   Flame,
   ArrowUpRight,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { 
   POPULAR_COUNTRIES, 
@@ -34,10 +36,13 @@ interface CountryHarvesterViewProps {
   onProxyIngested?: () => void;
 }
 
+const PAGE_SIZE = 50;
+
 export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   onProxyIngested
 }) => {
-  const [selectedCountry, setSelectedCountry] = useState<string>('PK'); // Default Pakistan
+  // Default to ALL Countries (Global Genuine Pool) - Never hardcoded to Pakistan!
+  const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
   const [requestedCount, setRequestedCount] = useState<number>(2500);
   const [autoSaveDb, setAutoSaveDb] = useState<boolean>(true);
@@ -51,6 +56,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   const [testingEndpoint, setTestingEndpoint] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, any>>({});
   const [tableSearch, setTableSearch] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   const currentCountryInfo: CountryMeta = getCountryInfo(selectedCountry);
 
@@ -62,6 +68,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
 
   // Auto-harvest on initial mount or when country explicitly selected
   const harvestCountryProxies = async (countryCode: string = selectedCountry) => {
+    const isAll = countryCode === 'ALL' || countryCode === 'all';
     const targetInfo = getCountryInfo(countryCode);
     setIsHarvesting(true);
     setHarvestFeedback(null);
@@ -70,25 +77,29 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          country: countryCode === 'ALL' ? undefined : countryCode,
-          count: requestedCount
+          country: isAll ? undefined : countryCode,
+          count: Math.min(requestedCount, 2500)
         })
       });
       const data = await res.json();
 
       if (data.success) {
-        setHarvestFeedback(`Successfully harvested ${data.discovered} authentic ${targetInfo.name} proxies! (${data.inserted} newly added to database)`);
+        const label = isAll ? 'Global (All Countries)' : targetInfo.name;
+        setHarvestFeedback(`Successfully harvested ${data.discovered} authentic ${label} proxies! (${data.inserted} newly added to database)`);
         if (onProxyIngested) onProxyIngested();
       } else {
         setHarvestFeedback('Harvest error: ' + (data.error || 'Failed'));
       }
 
-      // Also fetch live buffer to populate the view's list from database without limit
-      const inventoryRes = await fetch(`/api/proxies?country=${countryCode}&limit=0`);
+      // Fetch live inventory buffer (limited to 500 for lightning-fast 60fps responsiveness)
+      const invUrl = isAll 
+        ? '/api/proxies?limit=500' 
+        : `/api/proxies?country=${countryCode}&limit=500`;
+      const inventoryRes = await fetch(invUrl);
       const invData = await inventoryRes.json();
       if (invData.data && invData.data.length > 0) {
         const mapped: LiveDiscoveredProxy[] = invData.data.map((p: any) => {
-          const cCode = p.country_code || countryCode;
+          const cCode = p.country_code || (isAll ? 'ALL' : countryCode);
           const pInfo = getCountryInfo(cCode);
           return {
             ip: p.host,
@@ -101,29 +112,31 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             city: p.city || '',
             anonymity: p.anonymity || 'elite',
             latency_ms: p.last_latency_ms || 85,
-            source: p.source_name || `Targeted ${pInfo.name} Feed`,
+            source: p.source_name || (isAll ? 'Global Pool Feed' : `Targeted ${pInfo.name} Feed`),
             verified_active: p.current_status === 'ACTIVE',
             timestamp: p.created_at || new Date().toISOString()
           };
         });
         setHarvestedProxies(mapped);
+        setCurrentPage(1);
       } else {
         setHarvestedProxies([]);
       }
     } catch (err: any) {
-      setHarvestFeedback('Error during country harvest: ' + err.message);
+      setHarvestFeedback('Error during harvest: ' + err.message);
     } finally {
       setIsHarvesting(false);
     }
   };
 
-  // Run on mount
+  // Run on mount with ALL Countries (Global pool)
   useEffect(() => {
-    harvestCountryProxies('PK');
+    harvestCountryProxies('ALL');
   }, []);
 
   const handleCountrySelect = (code: string) => {
     setSelectedCountry(code);
+    setCurrentPage(1);
     setHarvestedProxies([]);
     harvestCountryProxies(code);
   };
@@ -178,7 +191,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   };
 
   const handleExport = (format: 'txt' | 'json') => {
-    // Strictly export verified live proxies only
+    // Strictly export verified live proxies only (closed proxies excluded)
     const liveOnly = harvestedProxies.filter(p => p.verified_active);
     if (liveOnly.length === 0) return;
     let content = '';
@@ -204,18 +217,28 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   };
 
   // Client filtering on harvested list
-  const filteredList = harvestedProxies.filter(p => {
-    if (protocolFilter !== 'all' && p.protocol !== protocolFilter) return false;
-    if (tableSearch) {
-      const q = tableSearch.toLowerCase();
-      return (
-        p.normalized_endpoint.toLowerCase().includes(q) ||
-        p.ip.toLowerCase().includes(q) ||
-        p.port.toString().includes(q)
-      );
-    }
-    return true;
-  });
+  const filteredList = useMemo(() => {
+    return harvestedProxies.filter(p => {
+      if (protocolFilter !== 'all' && p.protocol !== protocolFilter) return false;
+      if (tableSearch) {
+        const q = tableSearch.toLowerCase();
+        return (
+          p.normalized_endpoint.toLowerCase().includes(q) ||
+          p.ip.toLowerCase().includes(q) ||
+          p.port.toString().includes(q) ||
+          (p.country_code && p.country_code.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [harvestedProxies, protocolFilter, tableSearch]);
+
+  // High-performance pagination: renders 50 rows at a time to prevent any DOM lag or browser hang
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredList.slice(start, start + PAGE_SIZE);
+  }, [filteredList, currentPage]);
 
   return (
     <div className="space-y-6">
@@ -242,10 +265,16 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             </div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight mt-1 flex items-center gap-3">
               <CountryFlag code={currentCountryInfo.code} size="lg" />
-              <span>Extract & Scrape {currentCountryInfo.name} Proxies</span>
+              <span>
+                {selectedCountry === 'ALL' 
+                  ? 'All Countries Worldwide (Global Authentic Pool)' 
+                  : `Extract & Scrape ${currentCountryInfo.name} Proxies`}
+              </span>
             </h1>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Choose any country in the world (Pakistan, India, USA, etc.) to immediately scrape and stream authentic live proxies exclusive to that region with instant TCP health verification.
+              {selectedCountry === 'ALL'
+                ? 'Harvesting and validating authentic live proxies across all nations worldwide (Pakistan, India, USA, Germany, UK, Brazil, Turkey, etc.).'
+                : `Targeted high-speed extraction active for ${currentCountryInfo.name}. Only proxies belonging to ${currentCountryInfo.name} are extracted and displayed.`}
             </p>
           </div>
 
@@ -260,8 +289,8 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               <CountryFlag code={currentCountryInfo.code} size="xs" />
               <span>
                 {isHarvesting 
-                  ? `Harvesting ${currentCountryInfo.name}...` 
-                  : `Find ${currentCountryInfo.name} Proxies Now`}
+                  ? `Harvesting ${selectedCountry === 'ALL' ? 'Global Feeds' : currentCountryInfo.name}...` 
+                  : `Find ${selectedCountry === 'ALL' ? 'All Countries' : currentCountryInfo.name} Proxies Now`}
               </span>
             </button>
           </div>
@@ -285,19 +314,19 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               Step 1: Choose Your Target Country
             </h2>
             <span className="text-xs text-slate-400 ml-1">
-              (Harvester extracts ONLY selected nation)
+              (Select specific nation or All Countries)
             </span>
           </div>
 
           {/* Full Searchable Dropdown */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-300">All Countries:</span>
+            <span className="text-xs font-semibold text-slate-300">Target Nation:</span>
             <select
               value={selectedCountry}
               onChange={(e) => handleCountrySelect(e.target.value)}
               className="bg-[#141e36] border border-[#223359] text-white text-xs rounded-xl px-3.5 py-2 font-medium focus:outline-none focus:border-cyan-400 cursor-pointer"
             >
-              <option value="ALL">🌐 All Countries (Global)</option>
+              <option value="ALL">🌐 All Countries (Global Pool)</option>
               <option disabled>── Popular Countries ──</option>
               {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map(c => (
                 <option key={c.code} value={c.code}>
@@ -317,10 +346,22 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
         {/* Quick-Select Country Chips */}
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            ⚡ Quick Country Selector (One-Click Target):
+            ⚡ Quick Country Selector:
           </div>
           <div className="flex flex-wrap gap-2">
-            {POPULAR_COUNTRIES.map((c) => {
+            <button
+              onClick={() => handleCountrySelect('ALL')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedCountry === 'ALL'
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-500/30 border border-cyan-400'
+                  : 'bg-[#121c33] text-slate-300 hover:text-white hover:bg-[#182645] border border-[#1f2f54]'
+              }`}
+            >
+              <span>🌐</span>
+              <span>All Countries</span>
+            </button>
+
+            {POPULAR_COUNTRIES.filter(c => c.code !== 'ALL').map((c) => {
               const isSelected = selectedCountry === c.code;
               return (
                 <button
@@ -350,8 +391,11 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 {['all', 'http', 'socks5', 'socks4'].map(p => (
                   <button
                     key={p}
-                    onClick={() => setProtocolFilter(p)}
-                    className={`px-2.5 py-1 rounded text-xs font-mono uppercase font-bold transition-all ${
+                    onClick={() => {
+                      setProtocolFilter(p);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1 rounded text-xs font-mono uppercase font-bold transition-all ${
                       protocolFilter === p
                         ? 'bg-cyan-600 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
@@ -363,33 +407,27 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               </div>
             </div>
 
-            {/* Quantity */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-400">Target Count:</span>
-              <select
-                value={requestedCount}
-                onChange={(e) => setRequestedCount(parseInt(e.target.value, 10))}
-                className="bg-[#141e36] border border-[#202f52] text-xs text-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-cyan-400 cursor-pointer font-medium"
-              >
-                <option value={500}>500 Proxies</option>
-                <option value={1000}>1,000 Proxies</option>
-                <option value={2500}>2,500 Proxies</option>
-                <option value={5000}>5,000 Proxies</option>
-                <option value={10000}>10,000 Proxies</option>
-                <option value={25000}>25,000 Proxies</option>
-                <option value={100000}>100,000 Proxies</option>
-                <option value={0}>Unlimited Continuous Stream (No Cap)</option>
-              </select>
-            </div>
+            {/* Auto Save Toggle */}
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoSaveDb}
+                onChange={e => setAutoSaveDb(e.target.checked)}
+                className="rounded bg-[#141e36] border-slate-700 text-cyan-500 focus:ring-0"
+              />
+              <span>Auto-Save Discovered to DB</span>
+            </label>
           </div>
 
           {/* Export & Copy Actions - Strictly Live Only */}
           <div className="flex items-center gap-2">
             <a
-              href={`/api/proxies/export?format=txt&country=${selectedCountry}&status=ACTIVE`}
+              href={selectedCountry === 'ALL' 
+                ? '/api/proxies/export?format=txt&status=ACTIVE' 
+                : `/api/proxies/export?format=txt&country=${selectedCountry}&status=ACTIVE`}
               download
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 transition-all shadow-md"
-              title="Download only 100% verified working LIVE proxies for this country"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 transition-all shadow-md cursor-pointer"
+              title="Download only 100% verified working LIVE proxies"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Live DB .TXT</span>
@@ -398,7 +436,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             <button
               onClick={() => handleExport('json')}
               disabled={harvestedProxies.filter(p => p.verified_active).length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40 cursor-pointer"
               title="Export verified active proxies as JSON"
             >
               <Download className="w-3.5 h-3.5" />
@@ -412,7 +450,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 handleCopy(text, 'all');
               }}
               disabled={harvestedProxies.filter(p => p.verified_active).length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 transition-all disabled:opacity-40 cursor-pointer"
               title="Copy verified live working IP:Ports"
             >
               {copiedText === 'all' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -422,14 +460,18 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
         </div>
       </div>
 
-      {/* Discovered Proxies Table for this Country */}
+      {/* Discovered Proxies Table */}
       <div className="bg-[#0a0f1d] border border-[#19243f] rounded-2xl overflow-hidden shadow-2xl">
         <div className="px-5 py-4 border-b border-[#19243f] flex flex-wrap items-center justify-between gap-3 bg-[#0e162b]/80">
           <div className="flex items-center gap-2.5">
             <CountryFlag code={currentCountryInfo.code} size="md" />
             <div>
               <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                <span>{currentCountryInfo.name} Live Proxies Inventory</span>
+                <span>
+                  {selectedCountry === 'ALL' 
+                    ? 'All Countries Global Inventory' 
+                    : `${currentCountryInfo.name} Live Proxies Inventory`}
+                </span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                   {filteredList.length} PROXIES
                 </span>
@@ -442,10 +484,13 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search host or port..."
+                placeholder="Search host, port, country..."
                 value={tableSearch}
-                onChange={(e) => setTableSearch(e.target.value)}
-                className="pl-8 pr-3 py-1 bg-[#131d35] border border-[#1e2d52] rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 w-48"
+                onChange={(e) => {
+                  setTableSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-8 pr-3 py-1.5 bg-[#131d35] border border-[#1e2d52] rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400 w-56"
               />
             </div>
           </div>
@@ -458,136 +503,166 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                 <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto mb-3" />
                 <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-200">
                   <CountryFlag code={currentCountryInfo.code} size="xs" />
-                  <span>Harvesting authentic {currentCountryInfo.name} proxies...</span>
+                  <span>Harvesting authentic {selectedCountry === 'ALL' ? 'Global' : currentCountryInfo.name} proxies...</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">
-                  Querying GeoNode API, ProxyScrape feeds, and global proxy mirrors
+                  Querying live feeds, GeoNode API, and global edge nodes
                 </div>
               </>
             ) : (
               <>
                 <Globe className="w-10 h-10 text-slate-600 mx-auto mb-3" />
                 <div className="text-sm font-semibold text-slate-300">
-                  No proxies currently buffered for {currentCountryInfo.name}
+                  No proxies currently buffered for {selectedCountry === 'ALL' ? 'Global Pool' : currentCountryInfo.name}
                 </div>
                 <div className="text-xs text-slate-500 mt-1 mb-4">
-                  Click the button below to start real-time multi-source scraping for {currentCountryInfo.name}
+                  Click the button below to start real-time multi-source scraping
                 </div>
                 <button
                   onClick={() => harvestCountryProxies(selectedCountry)}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg transition-all inline-flex items-center gap-2 cursor-pointer"
                 >
                   <CountryFlag code={currentCountryInfo.code} size="xs" />
-                  <span>⚡ Harvest {currentCountryInfo.name} Proxies Now</span>
+                  <span>⚡ Harvest {selectedCountry === 'ALL' ? 'All Countries' : currentCountryInfo.name} Proxies Now</span>
                 </button>
               </>
             )}
           </div>
         ) : (
-          <div className="divide-y divide-[#151f38] max-h-[600px] overflow-y-auto">
-            {filteredList.map((proxy, idx) => {
-              const isCopied = copiedText === proxy.normalized_endpoint;
-              const isChecking = testingEndpoint === proxy.normalized_endpoint;
-              const testResult = testResults[proxy.normalized_endpoint];
+          <>
+            {/* Lightning-Fast Paginated Rows (50 per page, zero lag) */}
+            <div className="divide-y divide-[#151f38] max-h-[600px] overflow-y-auto">
+              {paginatedList.map((proxy, idx) => {
+                const isCopied = copiedText === proxy.normalized_endpoint;
+                const isChecking = testingEndpoint === proxy.normalized_endpoint;
+                const testResult = testResults[proxy.normalized_endpoint];
 
-              return (
-                <div
-                  key={`${proxy.normalized_endpoint}-${idx}`}
-                  className="p-3.5 px-5 flex items-center justify-between hover:bg-[#121c33]/70 transition-colors"
-                >
-                  {/* Left: Geo, Protocol, Host & Port */}
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2.5 w-36">
-                      <CountryFlag code={proxy.country_code} size="md" />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate max-w-[105px]">
-                          {proxy.country_name || getCountryInfo(proxy.country_code).name}
-                        </div>
-                        <div className="text-[10px] text-cyan-400 font-mono font-bold">
-                          [{proxy.country_code}]
+                return (
+                  <div
+                    key={`${proxy.normalized_endpoint}-${idx}`}
+                    className="p-3.5 px-5 flex items-center justify-between hover:bg-[#121c33]/70 transition-colors"
+                  >
+                    {/* Left: Geo, Protocol, Host & Port */}
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2.5 w-40">
+                        <CountryFlag code={proxy.country_code} size="md" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate max-w-[115px]">
+                            {proxy.country_name || getCountryInfo(proxy.country_code).name}
+                          </div>
+                          <div className="text-[10px] text-cyan-400 font-mono font-bold">
+                            [{proxy.country_code}]
+                          </div>
                         </div>
                       </div>
+
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                        proxy.protocol === 'socks5'
+                          ? 'text-blue-400 bg-blue-500/10 border-blue-500/30'
+                          : proxy.protocol === 'socks4'
+                          ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30'
+                          : proxy.protocol === 'https'
+                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                          : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
+                      }`}>
+                        {proxy.protocol}
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-slate-100 selection:bg-blue-600">
+                          {proxy.ip}:{proxy.port}
+                        </span>
+                        <button
+                          onClick={() => handleCopy(`${proxy.ip}:${proxy.port}`, proxy.normalized_endpoint)}
+                          className="text-slate-400 hover:text-cyan-300 p-1 rounded transition-colors cursor-pointer"
+                          title="Copy IP:Port"
+                        >
+                          {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      <span className="hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-[#141e36] text-slate-300 border border-[#202f54]">
+                        {proxy.anonymity.toUpperCase()}
+                      </span>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
-                      proxy.protocol === 'socks5'
-                        ? 'text-blue-400 bg-blue-500/10 border-blue-500/30'
-                        : proxy.protocol === 'socks4'
-                        ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30'
-                        : proxy.protocol === 'https'
-                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                        : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
-                    }`}>
-                      {proxy.protocol}
-                    </span>
+                    {/* Right: Latency, Live Probe Results & Test Button */}
+                    <div className="flex items-center gap-4">
+                      {testResult && (
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
+                          testResult.status === 'ACTIVE'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}>
+                          {testResult.status === 'ACTIVE' ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                          {testResult.status} ({testResult.latency}ms)
+                        </span>
+                      )}
 
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-semibold text-slate-100 selection:bg-blue-600">
-                        {proxy.ip}:{proxy.port}
+                      <div className="text-right">
+                        <div className={`font-mono text-xs font-bold ${
+                          proxy.latency_ms < 100
+                            ? 'text-emerald-400'
+                            : proxy.latency_ms < 300
+                            ? 'text-cyan-300'
+                            : 'text-amber-400'
+                        }`}>
+                          {proxy.latency_ms} ms
+                        </div>
+                        <div className="text-[10px] text-slate-400">RTT</div>
+                      </div>
+
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        ACTIVE
                       </span>
+
                       <button
-                        onClick={() => handleCopy(`${proxy.ip}:${proxy.port}`, proxy.normalized_endpoint)}
-                        className="text-slate-400 hover:text-cyan-300 p-1 rounded transition-colors cursor-pointer"
-                        title="Copy IP:Port"
+                        onClick={() => handleTestProxy(proxy)}
+                        disabled={isChecking}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#1a2647] hover:bg-cyan-600 text-slate-200 hover:text-white border border-[#263763] transition-all disabled:opacity-50 cursor-pointer"
                       >
-                        {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {isChecking ? (
+                          <RefreshCw className="w-3 h-3 animate-spin text-cyan-300" />
+                        ) : (
+                          <Zap className="w-3 h-3 text-cyan-400" />
+                        )}
+                        <span>Test Live</span>
                       </button>
                     </div>
-
-                    <span className="hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-[#141e36] text-slate-300 border border-[#202f54]">
-                      {proxy.anonymity.toUpperCase()}
-                    </span>
                   </div>
+                );
+              })}
+            </div>
 
-                  {/* Right: Latency, Live Probe Results & Test Button */}
-                  <div className="flex items-center gap-4">
-                    {/* Live Test Outcome (if checked) */}
-                    {testResult && (
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
-                        testResult.status === 'ACTIVE'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                      }`}>
-                        {testResult.status === 'ACTIVE' ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                        {testResult.status} ({testResult.latency}ms)
-                      </span>
-                    )}
-
-                    <div className="text-right">
-                      <div className={`font-mono text-xs font-bold ${
-                        proxy.latency_ms < 100
-                          ? 'text-emerald-400'
-                          : proxy.latency_ms < 300
-                          ? 'text-cyan-300'
-                          : 'text-amber-400'
-                      }`}>
-                        {proxy.latency_ms} ms
-                      </div>
-                      <div className="text-[10px] text-slate-400">RTT</div>
-                    </div>
-
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                      ACTIVE
-                    </span>
-
-                    <button
-                      onClick={() => handleTestProxy(proxy)}
-                      disabled={isChecking}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#1a2647] hover:bg-cyan-600 text-slate-200 hover:text-white border border-[#263763] transition-all disabled:opacity-50 cursor-pointer"
-                    >
-                      {isChecking ? (
-                        <RefreshCw className="w-3 h-3 animate-spin text-cyan-300" />
-                      ) : (
-                        <Zap className="w-3 h-3 text-cyan-400" />
-                      )}
-                      <span>Test Live</span>
-                    </button>
-                  </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="p-3 px-5 border-t border-[#19243f] bg-[#0e162b]/95 flex items-center justify-between text-xs text-slate-300">
+                <div>
+                  Showing <span className="font-bold text-white font-mono">{(currentPage - 1) * PAGE_SIZE + 1}</span> to <span className="font-bold text-white font-mono">{Math.min(currentPage * PAGE_SIZE, filteredList.length)}</span> of <span className="font-bold text-cyan-400 font-mono">{filteredList.length}</span> proxies
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#131d35] hover:bg-[#1a2745] text-slate-200 disabled:opacity-40 font-semibold transition-all border border-[#1e2d52] cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                  </button>
+                  <span className="font-mono font-bold text-white px-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#131d35] hover:bg-[#1a2745] text-slate-200 disabled:opacity-40 font-semibold transition-all border border-[#1e2d52] cursor-pointer"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
