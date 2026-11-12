@@ -6,6 +6,7 @@ dist-software
 electron
 build
 build-app.bat
+electron-builder.json
 scripts
 videos
 *.exe
