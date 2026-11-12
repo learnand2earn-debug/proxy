@@ -790,6 +790,7 @@ class Repository {
     };
 
     this.state.proxies.unshift(newRecord);
+    this.endpointSet.add(key);
     this.addAuditLog({
       owner_id: record.owner_id,
       action: 'PROXY_CREATED',

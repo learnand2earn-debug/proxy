@@ -51,13 +51,23 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [viewFilter, setViewFilter] = useState<'live' | 'dead' | 'all'>('live'); // Default show Active section
   
-  const [streamedProxies, setStreamedProxies] = useState<LiveDiscoveredProxy[]>(() => {
+  // Independent, non-zero-sum pools for Active and Offline proxies
+  const [activeList, setActiveList] = useState<LiveDiscoveredProxy[]>(() => {
     if (typeof window === 'undefined') return [];
     if (!(window as any).__WSP_RADAR_SESSION_STORE) {
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
     const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
-    return store.size > 0 ? Array.from(store.values()).reverse().slice(0, 150) : [];
+    return store.size > 0 ? Array.from(store.values()).filter(p => p.verified_active).reverse().slice(0, 2500) : [];
+  });
+
+  const [offlineList, setOfflineList] = useState<LiveDiscoveredProxy[]>(() => {
+    if (typeof window === 'undefined') return [];
+    if (!(window as any).__WSP_RADAR_SESSION_STORE) {
+      (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
+    }
+    const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
+    return store.size > 0 ? Array.from(store.values()).filter(p => !p.verified_active).reverse().slice(0, 2500) : [];
   });
 
   // Persistent singleton store attached to window - survives unmounting, tab switching, and navigation
@@ -169,6 +179,57 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     fetchStats();
     const syncTimer = setInterval(fetchStats, 4000);
 
+    // Initial load: Pre-populate active & offline lists immediately from real database inventory
+    fetch('/api/proxies?limit=300')
+      .then(r => r.json())
+      .then(res => {
+        if (res && Array.isArray(res.data) && res.data.length > 0) {
+          const store = getSessionMap();
+          const initActive: LiveDiscoveredProxy[] = [];
+          const initOffline: LiveDiscoveredProxy[] = [];
+
+          res.data.forEach((p: any) => {
+            const mapped: LiveDiscoveredProxy = {
+              ip: p.host || p.ip || '127.0.0.1',
+              port: p.port || 80,
+              protocol: p.protocol || 'http',
+              normalized_endpoint: p.normalized_endpoint,
+              country_code: p.country_code || 'US',
+              country_name: p.country_code ? getCountryInfo(p.country_code).name : 'Worldwide',
+              flag: p.country_code ? getCountryInfo(p.country_code).flag : '🌐',
+              anonymity: p.anonymity || 'anonymous',
+              latency_ms: p.last_latency_ms || 120,
+              source: p.source_name || 'Verified Database Pool',
+              verified_active: p.current_status === 'ACTIVE',
+              timestamp: p.last_checked_at || new Date().toISOString()
+            };
+
+            store.set(mapped.normalized_endpoint, mapped);
+            if (mapped.verified_active) {
+              initActive.push(mapped);
+            } else {
+              initOffline.push(mapped);
+            }
+          });
+
+          if (initActive.length > 0) {
+            setActiveList(prev => {
+              const seen = new Set(prev.map(x => x.normalized_endpoint));
+              const toAdd = initActive.filter(x => !seen.has(x.normalized_endpoint));
+              return [...prev, ...toAdd].slice(0, 3000);
+            });
+          }
+          if (initOffline.length > 0) {
+            setOfflineList(prev => {
+              const seen = new Set(prev.map(x => x.normalized_endpoint));
+              const toAdd = initOffline.filter(x => !seen.has(x.normalized_endpoint));
+              return [...prev, ...toAdd].slice(0, 3000);
+            });
+          }
+        }
+      })
+      .catch(() => {});
+
     // When user switches browser tabs or returns, immediately refresh stats without resetting
     const handleVisibilityChange = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
@@ -189,7 +250,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
 
   // Background auto-recovery worker: re-tests offline proxies and promotes any that turn ON to the active section
   const retestOfflinePool = useCallback(async () => {
-    const deadList = streamedProxies.filter(p => !p.verified_active).slice(0, 10);
+    const deadList = offlineList.slice(0, 20);
     if (deadList.length === 0 || isRetesting) return;
 
     setIsRetesting(true);
@@ -201,16 +262,21 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       });
       const data = await res.json();
       if (data.recovered && data.recovered.length > 0) {
-        // Mark recovered proxies as active
-        setStreamedProxies(prev => {
-          const recoveredMap = new Map<string, any>(data.recovered.map((r: any) => [r.normalized_endpoint, r]));
-          return prev.map(p => {
-            const rec = recoveredMap.get(p.normalized_endpoint);
-            if (rec) {
-              return { ...p, ...rec, verified_active: true };
-            }
-            return p;
-          });
+        const recoveredEndpoints = new Set(data.recovered.map((r: any) => r.normalized_endpoint));
+
+        // Remove recovered proxies from offline list
+        setOfflineList(prev => prev.filter(p => !recoveredEndpoints.has(p.normalized_endpoint)));
+
+        // Promote recovered proxies into active list
+        const promoted: LiveDiscoveredProxy[] = data.recovered.map((r: any) => ({
+          ...r,
+          verified_active: true
+        }));
+
+        setActiveList(prev => {
+          const seen = new Set(prev.map(p => p.normalized_endpoint));
+          const toAdd = promoted.filter(p => !seen.has(p.normalized_endpoint));
+          return [...toAdd, ...prev].slice(0, 3000);
         });
 
         setTotalLiveCount(prev => prev + data.recovered.length);
@@ -224,7 +290,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     } catch {} finally {
       setIsRetesting(false);
     }
-  }, [streamedProxies, isRetesting, playBeep]);
+  }, [offlineList, isRetesting, playBeep]);
 
   // Periodic automatic recovery check every 15 seconds
   useEffect(() => {
@@ -252,7 +318,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     return () => clearInterval(pruneTimer);
   }, []);
 
-  // High-performance 150ms buffer flusher: combines incoming proxies into smooth 60fps frame renders
+  // High-performance 150ms buffer flusher: routes incoming proxies to independent active & offline pools
   useEffect(() => {
     if (!isPlaying) return;
     const flushTimer = setInterval(() => {
@@ -260,22 +326,50 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       const batch = pendingIncomingRef.current.splice(0, pendingIncomingRef.current.length);
       const store = getSessionMap();
 
-      let liveInc = 0;
-      let deadInc = 0;
+      const newActive: LiveDiscoveredProxy[] = [];
+      const newOffline: LiveDiscoveredProxy[] = [];
+
       for (const p of batch) {
         store.set(p.normalized_endpoint, p);
-        if (p.verified_active) liveInc++;
-        else deadInc++;
+        if (p.verified_active) newActive.push(p);
+        else newOffline.push(p);
       }
 
-      setStreamedProxies(prev => {
-        const combined = [...batch.reverse(), ...prev];
-        return combined.slice(0, 100);
-      });
+      if (newActive.length > 0) {
+        setActiveList(prev => {
+          const seen = new Set<string>();
+          const combined: LiveDiscoveredProxy[] = [];
+          for (const p of [...newActive.reverse(), ...prev]) {
+            if (!seen.has(p.normalized_endpoint)) {
+              seen.add(p.normalized_endpoint);
+              combined.push(p);
+            }
+          }
+          return combined.slice(0, 3000);
+        });
+
+        // Promote newly active proxies: remove them from offline pool if present
+        const activeEpSet = new Set(newActive.map(a => a.normalized_endpoint));
+        setOfflineList(prev => prev.filter(p => !activeEpSet.has(p.normalized_endpoint)));
+      }
+
+      if (newOffline.length > 0) {
+        setOfflineList(prev => {
+          const seen = new Set<string>();
+          const combined: LiveDiscoveredProxy[] = [];
+          for (const p of [...newOffline.reverse(), ...prev]) {
+            if (!seen.has(p.normalized_endpoint)) {
+              seen.add(p.normalized_endpoint);
+              combined.push(p);
+            }
+          }
+          return combined.slice(0, 3000);
+        });
+      }
 
       setSessionStreamedCount(store.size);
-      if (liveInc > 0) setTotalLiveCount(prev => prev + liveInc);
-      if (deadInc > 0) setTotalDeadCount(prev => prev + deadInc);
+      if (newActive.length > 0) setTotalLiveCount(prev => prev + newActive.length);
+      if (newOffline.length > 0) setTotalDeadCount(prev => prev + newOffline.length);
       setTotalStreamedCount(prev => prev + batch.length);
       setTotalDbCount(prev => prev + batch.length);
 
@@ -303,23 +397,48 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
           const list: LiveDiscoveredProxy[] = JSON.parse(event.data);
           const store = getSessionMap();
           
-          list.forEach(p => store.set(p.normalized_endpoint, p));
+          const burstActive: LiveDiscoveredProxy[] = [];
+          const burstOffline: LiveDiscoveredProxy[] = [];
+
+          list.forEach(p => {
+            store.set(p.normalized_endpoint, p);
+            if (p.verified_active) burstActive.push(p);
+            else burstOffline.push(p);
+          });
           setSessionStreamedCount(store.size);
 
-          setStreamedProxies(prev => {
-            const combined = [...list, ...prev];
-            const seen = new Set();
-            return combined.filter(p => {
-              if (seen.has(p.normalized_endpoint)) return false;
-              seen.add(p.normalized_endpoint);
-              return true;
-            }).slice(0, 100);
-          });
+          if (burstActive.length > 0) {
+            setActiveList(prev => {
+              const seen = new Set<string>();
+              const combined: LiveDiscoveredProxy[] = [];
+              for (const p of [...burstActive.reverse(), ...prev]) {
+                if (!seen.has(p.normalized_endpoint)) {
+                  seen.add(p.normalized_endpoint);
+                  combined.push(p);
+                }
+              }
+              return combined.slice(0, 3000);
+            });
+            const activeEpSet = new Set(burstActive.map(a => a.normalized_endpoint));
+            setOfflineList(prev => prev.filter(p => !activeEpSet.has(p.normalized_endpoint)));
+          }
 
-          const liveInList = list.filter(p => p.verified_active).length;
-          const deadInList = list.length - liveInList;
-          setTotalLiveCount(prev => prev + liveInList);
-          setTotalDeadCount(prev => prev + deadInList);
+          if (burstOffline.length > 0) {
+            setOfflineList(prev => {
+              const seen = new Set<string>();
+              const combined: LiveDiscoveredProxy[] = [];
+              for (const p of [...burstOffline.reverse(), ...prev]) {
+                if (!seen.has(p.normalized_endpoint)) {
+                  seen.add(p.normalized_endpoint);
+                  combined.push(p);
+                }
+              }
+              return combined.slice(0, 3000);
+            });
+          }
+
+          setTotalLiveCount(prev => prev + burstActive.length);
+          setTotalDeadCount(prev => prev + burstOffline.length);
           setTotalStreamedCount(prev => Math.max(prev + list.length, store.size));
           setTotalDbCount(prev => prev + list.length);
         } catch (e) {
@@ -480,18 +599,20 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     setTimeout(() => setCopiedEndpoint(null), 2000);
   };
 
-  // Real live telemetry calculations
-  const liveProxies = streamedProxies.filter(p => p.verified_active);
-  const deadProxies = streamedProxies.filter(p => !p.verified_active);
+  // Real live telemetry calculations based on separate non-zero-sum pools
+  const liveProxies = activeList;
+  const deadProxies = offlineList;
+  const totalTelemetryCount = activeList.length + offlineList.length;
+
   const avgLatency = liveProxies.length > 0
     ? Math.round(liveProxies.reduce((acc, p) => acc + (p.latency_ms || 0), 0) / liveProxies.length)
     : 0;
 
   const displayedProxies = viewFilter === 'all'
-    ? streamedProxies
+    ? [...activeList, ...offlineList].slice(0, 250)
     : viewFilter === 'live'
-    ? liveProxies
-    : deadProxies;
+    ? activeList.slice(0, 250)
+    : offlineList.slice(0, 250);
 
   return (
     <div className="space-y-6">
@@ -807,7 +928,9 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
 
           <button
             onClick={() => {
-              setStreamedProxies([]);
+              setActiveList([]);
+              setOfflineList([]);
+              getSessionMap().clear();
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-[#233358] transition-all"
             title="Clear the visual stream cards (database remains preserved)"
@@ -855,16 +978,16 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
             <h2 className="text-sm font-bold text-white tracking-wide">
               {viewFilter === 'live' 
-                ? `🟢 Active Verified Section (${liveProxies.length} online)` 
+                ? `🟢 Active Verified Section (${activeList.length} online)` 
                 : viewFilter === 'dead' 
-                ? `🔴 Offline Retest Queue (${deadProxies.length} waiting for recovery)` 
-                : `🌐 All Worldwide Telemetry (${streamedProxies.length})`}
+                ? `🔴 Offline Retest Queue (${offlineList.length} waiting for recovery)` 
+                : `🌐 All Worldwide Telemetry (${totalTelemetryCount})`}
             </h2>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Retest Offline Now Button */}
-            {deadProxies.length > 0 && (
+            {offlineList.length > 0 && (
               <button
                 onClick={() => retestOfflinePool()}
                 disabled={isRetesting}
@@ -887,7 +1010,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Active Section ({liveProxies.length})
+                Active Section ({activeList.length})
               </button>
 
               <button
@@ -899,7 +1022,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                Offline Pool ({deadProxies.length})
+                Offline Pool ({offlineList.length})
               </button>
 
               <button
@@ -910,7 +1033,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                All ({streamedProxies.length})
+                All ({totalTelemetryCount})
               </button>
             </div>
           </div>

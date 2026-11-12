@@ -17,8 +17,9 @@ export async function GET(req: NextRequest) {
   const filterCountry = (searchParams.get('country') || 'ALL').trim().toUpperCase();
   const speed = searchParams.get('speed') || 'normal';
 
-  // Interval in ms based on speed
-  const intervalMs = speed === 'turbo' ? 250 : speed === 'fast' ? 500 : 900;
+  // Interval in ms based on speed - faster throughput for continuous multi-proxy streaming
+  const intervalMs = speed === 'turbo' ? 120 : speed === 'fast' ? 250 : 600;
+  const burstPerTick = speed === 'turbo' ? 4 : speed === 'fast' ? 2 : 1;
 
   const matchesFilters = (p: LiveDiscoveredProxy) => {
     const matchProto = filterProtocol === 'all' || p.protocol === filterProtocol;
@@ -63,11 +64,11 @@ export async function GET(req: NextRequest) {
 
     isTesting = true;
     try {
-      const batch = rawPool.splice(0, 10);
+      const batch = rawPool.splice(0, 30);
       const tested = await Promise.all(
         batch.map(async (p) => {
           try {
-            const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1400);
+            const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1200);
             return {
               ...p,
               latency_ms: latencyMs,
@@ -101,8 +102,8 @@ export async function GET(req: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      // Send initial burst of already tested real proxies
-      const initialBurst = testedQueue.splice(0, Math.min(testedQueue.length, 12));
+      // Send initial burst of tested real proxies (up to 40)
+      const initialBurst = testedQueue.splice(0, Math.min(testedQueue.length, 40));
       controller.enqueue(encoder.encode(`event: initial_burst\ndata: ${JSON.stringify(initialBurst)}\n\n`));
 
       // Periodic stream feeder
@@ -114,26 +115,26 @@ export async function GET(req: NextRequest) {
 
         try {
           // If tested queue is low, test more proxies in parallel
-          if (testedQueue.length < 15 && !isTesting) {
+          if (testedQueue.length < 30 && !isTesting) {
             processTestBatch().catch(() => {});
           }
 
           if (testedQueue.length === 0) return;
 
-          const candidate = testedQueue.shift();
-          if (!candidate) return;
+          const toSend = testedQueue.splice(0, Math.min(testedQueue.length, burstPerTick));
+          for (const candidate of toSend) {
+            // Stream verified proxy to client
+            controller.enqueue(
+              encoder.encode(`event: proxy_incoming\ndata: ${JSON.stringify(candidate)}\n\n`)
+            );
 
-          // Stream verified proxy to client
-          controller.enqueue(
-            encoder.encode(`event: proxy_incoming\ndata: ${JSON.stringify(candidate)}\n\n`)
-          );
-
-          // Batch auto-ingestion: saves both live and inactive real results
-          if (autoIngest) {
-            ingestBatch.push(candidate);
-            if (ingestBatch.length >= 8) {
-              const toFlush = ingestBatch.splice(0, ingestBatch.length);
-              ingestLiveProxiesIntoDatabase(toFlush, DEFAULT_OWNER_ID, true).catch(() => {});
+            // Batch auto-ingestion: saves both live and inactive real results
+            if (autoIngest) {
+              ingestBatch.push(candidate);
+              if (ingestBatch.length >= 15) {
+                const toFlush = ingestBatch.splice(0, ingestBatch.length);
+                ingestLiveProxiesIntoDatabase(toFlush, DEFAULT_OWNER_ID, true).catch(() => {});
+              }
             }
           }
         } catch (err: any) {

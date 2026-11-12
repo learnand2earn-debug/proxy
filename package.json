@@ -52,6 +52,7 @@
     "files": [
       "electron/**/*",
       ".next-desktop/**/*",
+      ".next/**/*",
       "public/**/*",
       "data/**/*",
       "build/**/*",
@@ -61,6 +62,7 @@
     "asar": true,
     "asarUnpack": [
       "**/.next-desktop/**",
+      "**/.next/**",
       "**/data/**"
     ]
   },

@@ -8,3 +8,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.send('window-close'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version')
 });
+
