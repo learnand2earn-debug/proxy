@@ -52,14 +52,14 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [viewFilter, setViewFilter] = useState<'live' | 'dead' | 'all'>('live'); // Default show Active section
   
-  // Independent, non-zero-sum pools for Active and Offline proxies
+  // Independent, non-zero-sum pools for Active and Offline proxies (windowed for maximum 60fps responsiveness)
   const [activeList, setActiveList] = useState<LiveDiscoveredProxy[]>(() => {
     if (typeof window === 'undefined') return [];
     if (!(window as any).__WSP_RADAR_SESSION_STORE) {
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
     const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
-    return store.size > 0 ? Array.from(store.values()).filter(p => p.verified_active).reverse().slice(0, 2500) : [];
+    return store.size > 0 ? Array.from(store.values()).filter(p => p.verified_active).reverse().slice(0, 300) : [];
   });
 
   const [offlineList, setOfflineList] = useState<LiveDiscoveredProxy[]>(() => {
@@ -68,7 +68,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
     const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
-    return store.size > 0 ? Array.from(store.values()).filter(p => !p.verified_active).reverse().slice(0, 2500) : [];
+    return store.size > 0 ? Array.from(store.values()).filter(p => !p.verified_active).reverse().slice(0, 300) : [];
   });
 
   // Persistent singleton store attached to window - survives unmounting, tab switching, and navigation
@@ -77,7 +77,16 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     if (!(window as any).__WSP_RADAR_SESSION_STORE) {
       (window as any).__WSP_RADAR_SESSION_STORE = new Map<string, LiveDiscoveredProxy>();
     }
-    return (window as any).__WSP_RADAR_SESSION_STORE;
+    const store: Map<string, LiveDiscoveredProxy> = (window as any).__WSP_RADAR_SESSION_STORE;
+    if (store.size > 25000) {
+      const it = store.keys();
+      for (let i = 0; i < 5000; i++) {
+        const k = it.next().value;
+        if (k) store.delete(k);
+        else break;
+      }
+    }
+    return store;
   };
 
   // High-performance batching buffer to eliminate React re-render lag and browser freezing
@@ -217,14 +226,14 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             setActiveList(prev => {
               const seen = new Set(prev.map(x => x.normalized_endpoint));
               const toAdd = initActive.filter(x => !seen.has(x.normalized_endpoint));
-              return [...prev, ...toAdd].slice(0, 3000);
+              return [...prev, ...toAdd].slice(0, 300);
             });
           }
           if (initOffline.length > 0) {
             setOfflineList(prev => {
               const seen = new Set(prev.map(x => x.normalized_endpoint));
               const toAdd = initOffline.filter(x => !seen.has(x.normalized_endpoint));
-              return [...prev, ...toAdd].slice(0, 3000);
+              return [...prev, ...toAdd].slice(0, 300);
             });
           }
         }
@@ -277,7 +286,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
         setActiveList(prev => {
           const seen = new Set(prev.map(p => p.normalized_endpoint));
           const toAdd = promoted.filter(p => !seen.has(p.normalized_endpoint));
-          return [...toAdd, ...prev].slice(0, 3000);
+          return [...toAdd, ...prev].slice(0, 300);
         });
 
         setTotalLiveCount(prev => prev + data.recovered.length);
@@ -346,7 +355,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               combined.push(p);
             }
           }
-          return combined.slice(0, 3000);
+          return combined.slice(0, 300);
         });
 
         // Promote newly active proxies: remove them from offline pool if present
@@ -364,7 +373,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
               combined.push(p);
             }
           }
-          return combined.slice(0, 3000);
+          return combined.slice(0, 300);
         });
       }
 
@@ -418,7 +427,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                   combined.push(p);
                 }
               }
-              return combined.slice(0, 3000);
+              return combined.slice(0, 300);
             });
             const activeEpSet = new Set(burstActive.map(a => a.normalized_endpoint));
             setOfflineList(prev => prev.filter(p => !activeEpSet.has(p.normalized_endpoint)));
@@ -434,7 +443,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                   combined.push(p);
                 }
               }
-              return combined.slice(0, 3000);
+              return combined.slice(0, 300);
             });
           }
 

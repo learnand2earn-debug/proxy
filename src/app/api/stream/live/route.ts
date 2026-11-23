@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
 
             if (autoIngest) {
               ingestBatch.push(candidate);
-              if (ingestBatch.length >= 20) {
+              if (ingestBatch.length >= 60) {
                 const toFlush = ingestBatch.splice(0, ingestBatch.length);
                 ingestLiveProxiesIntoDatabase(toFlush, DEFAULT_OWNER_ID, true).catch(() => {});
               }

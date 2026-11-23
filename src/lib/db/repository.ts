@@ -477,6 +477,10 @@ class Repository {
   private state: DBState;
   private activeAdminSessions = new Map<string, { createdAt: number; expiresAt: number }>();
   private endpointSet = new Set<string>();
+  private proxyEndpointMap = new Map<string, ProxyRecord>();
+  private proxyIdMap = new Map<string, ProxyRecord>();
+  private isSaving = false;
+  private saveScheduled = false;
   private saveTimeout: NodeJS.Timeout | null = null;
   private pendingSaves = 0;
 
@@ -503,7 +507,12 @@ class Repository {
               }
               for (const p of parsed.proxies) {
                 if (p.normalized_endpoint) {
-                  this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+                  const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
+                  this.endpointSet.add(key);
+                  this.proxyEndpointMap.set(key, p);
+                }
+                if (p.id) {
+                  this.proxyIdMap.set(p.id, p);
                 }
               }
               return parsed;
@@ -524,7 +533,12 @@ class Repository {
               console.log('[Repository] Successfully recovered proxy database from store.json.bak!');
               for (const p of parsedBak.proxies) {
                 if (p.normalized_endpoint) {
-                  this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+                  const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
+                  this.endpointSet.add(key);
+                  this.proxyEndpointMap.set(key, p);
+                }
+                if (p.id) {
+                  this.proxyIdMap.set(p.id, p);
                 }
               }
               this.saveStateDirect(parsedBak);
@@ -540,7 +554,12 @@ class Repository {
     const initial = initializeSeedData();
     for (const p of initial.proxies) {
       if (p.normalized_endpoint) {
-        this.endpointSet.add(`${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`);
+        const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
+        this.endpointSet.add(key);
+        this.proxyEndpointMap.set(key, p);
+      }
+      if (p.id) {
+        this.proxyIdMap.set(p.id, p);
       }
     }
     this.saveStateDirect(initial);
@@ -583,14 +602,60 @@ class Repository {
     }
   }
 
+  private async saveStateAsync(s: DBState): Promise<void> {
+    if (this.isSaving) {
+      this.saveScheduled = true;
+      return;
+    }
+    this.isSaving = true;
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        await fs.promises.mkdir(DATA_DIR, { recursive: true });
+      }
+      const BACKUP_FILE = path.join(DATA_DIR, 'store.json.bak');
+      const TEMP_FILE = path.join(DATA_DIR, 'store.json.tmp');
+
+      const jsonStr = JSON.stringify(s);
+      await fs.promises.writeFile(TEMP_FILE, jsonStr, 'utf-8');
+
+      if (fs.existsSync(DATA_FILE)) {
+        try {
+          await fs.promises.copyFile(DATA_FILE, BACKUP_FILE);
+        } catch { }
+      }
+
+      try {
+        await fs.promises.copyFile(TEMP_FILE, DATA_FILE);
+      } catch {
+        await fs.promises.writeFile(DATA_FILE, jsonStr, 'utf-8');
+      }
+
+      try {
+        if (fs.existsSync(TEMP_FILE)) {
+          await fs.promises.unlink(TEMP_FILE);
+        }
+      } catch { }
+    } catch (err) {
+      console.error('Failed to write store.json asynchronously:', err);
+    } finally {
+      this.isSaving = false;
+      if (this.saveScheduled) {
+        this.saveScheduled = false;
+        setTimeout(() => this.saveStateAsync(this.state), 500);
+      }
+    }
+  }
+
   private enforceSafetyCap() {
-    if (this.state.proxies.length > 15000) {
+    if (this.state.proxies.length > 50000) {
       this.pruneStaleClosedProxies(12 * 60 * 60 * 1000);
-      if (this.state.proxies.length > 15000) {
-        const removed = this.state.proxies.splice(15000);
+      if (this.state.proxies.length > 50000) {
+        const removed = this.state.proxies.splice(50000);
         for (const p of removed) {
           const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
           this.endpointSet.delete(key);
+          this.proxyEndpointMap.delete(key);
+          this.proxyIdMap.delete(p.id);
         }
       }
     }
@@ -598,7 +663,7 @@ class Repository {
 
   public save(immediate = false) {
     this.pendingSaves++;
-    if (immediate || this.pendingSaves >= 20) {
+    if (immediate) {
       if (this.saveTimeout) {
         clearTimeout(this.saveTimeout);
         this.saveTimeout = null;
@@ -608,12 +673,22 @@ class Repository {
       return;
     }
 
+    if (this.pendingSaves >= 100) {
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      this.pendingSaves = 0;
+      this.saveStateAsync(this.state).catch(() => {});
+      return;
+    }
+
     if (!this.saveTimeout) {
       this.saveTimeout = setTimeout(() => {
         this.saveTimeout = null;
         this.pendingSaves = 0;
-        this.saveStateDirect(this.state);
-      }, 1500);
+        this.saveStateAsync(this.state).catch(() => {});
+      }, 5000);
     }
   }
 
@@ -729,7 +804,7 @@ class Repository {
   }
 
   public getProxyById(id: string): ProxyRecord | undefined {
-    return this.state.proxies.find(p => p.id === id);
+    return this.proxyIdMap.get(id);
   }
 
   public insertProxiesBulk(records: NewProxyRecord[]): { insertedCount: number; duplicateCount: number } {
@@ -744,10 +819,8 @@ class Repository {
       const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
       if (this.endpointSet.has(key)) {
         duplicateCount++;
-        // Update live status and latency if re-probed
-        const existing = this.state.proxies.find(
-          p => p.owner_id === record.owner_id && p.normalized_endpoint.toLowerCase() === record.normalized_endpoint.toLowerCase()
-        );
+        // Instant O(1) Map lookup
+        const existing = this.proxyEndpointMap.get(key);
         if (existing && record.current_status) {
           existing.current_status = record.current_status;
           if (record.last_latency_ms) existing.last_latency_ms = record.last_latency_ms;
@@ -766,7 +839,7 @@ class Repository {
         if (src) source_name = src.name;
       }
 
-      newRecords.push({
+      const newProxy: ProxyRecord = {
         ...record,
         id,
         source_name,
@@ -778,7 +851,11 @@ class Repository {
         updated_at: now,
         next_scheduled_check_at: now,
         tags: record.tags || []
-      });
+      };
+
+      newRecords.push(newProxy);
+      this.proxyEndpointMap.set(key, newProxy);
+      this.proxyIdMap.set(id, newProxy);
       insertedCount++;
     }
 
@@ -799,9 +876,7 @@ class Repository {
   public insertProxy(record: NewProxyRecord): { record: ProxyRecord; is_duplicate: boolean } {
     const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
     if (this.endpointSet.has(key)) {
-      const existing = this.state.proxies.find(
-        p => p.owner_id === record.owner_id && p.normalized_endpoint.toLowerCase() === record.normalized_endpoint.toLowerCase()
-      );
+      const existing = this.proxyEndpointMap.get(key);
       if (existing) return { record: existing, is_duplicate: true };
     }
 
@@ -831,6 +906,8 @@ class Repository {
 
     this.state.proxies.unshift(newRecord);
     this.endpointSet.add(key);
+    this.proxyEndpointMap.set(key, newRecord);
+    this.proxyIdMap.set(id, newRecord);
     this.enforceSafetyCap();
     this.addAuditLog({
       owner_id: record.owner_id,
@@ -845,7 +922,7 @@ class Repository {
   }
 
   public updateProxyCheck(id: string, checkResult: ProxyCheckResult): { record: ProxyRecord; transition?: StatusTransition } | null {
-    const proxy = this.state.proxies.find(p => p.id === id);
+    const proxy = this.proxyIdMap.get(id);
     if (!proxy) return null;
 
     const previousStatus = proxy.current_status;
@@ -1037,7 +1114,7 @@ class Repository {
   }
 
   public quarantineProxy(id: string, reason: string): ProxyRecord | null {
-    const proxy = this.state.proxies.find(p => p.id === id);
+    const proxy = this.proxyIdMap.get(id);
     if (!proxy) return null;
 
     proxy.is_quarantined = true;
@@ -1058,7 +1135,7 @@ class Repository {
   }
 
   public restoreProxy(id: string): ProxyRecord | null {
-    const proxy = this.state.proxies.find(p => p.id === id);
+    const proxy = this.proxyIdMap.get(id);
     if (!proxy) return null;
 
     proxy.is_quarantined = false;
@@ -1087,6 +1164,10 @@ class Repository {
 
     const proxy = this.state.proxies[idx];
     this.state.proxies.splice(idx, 1);
+    const key = `${proxy.owner_id}:${proxy.normalized_endpoint.toLowerCase()}`;
+    this.endpointSet.delete(key);
+    this.proxyEndpointMap.delete(key);
+    this.proxyIdMap.delete(id);
 
     this.addAuditLog({
       owner_id: proxy.owner_id,
@@ -1096,7 +1177,7 @@ class Repository {
       details: { endpoint: maskEndpoint(proxy.normalized_endpoint) }
     });
 
-    this.save();
+    this.save(true);
     return true;
   }
 
@@ -1121,9 +1202,11 @@ class Repository {
       const isOlderThan24h = age > maxAgeMs;
 
       if (isOlderThan24h) {
-        // Prune from endpoint set so fresh live tests can re-evaluate it in future
+        // Prune from endpoint set and maps so fresh live tests can re-evaluate it in future
         const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
         this.endpointSet.delete(key);
+        this.proxyEndpointMap.delete(key);
+        this.proxyIdMap.delete(p.id);
         return false; // Prune!
       }
 
