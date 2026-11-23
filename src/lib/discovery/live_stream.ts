@@ -666,8 +666,8 @@ export function startPerpetualAutonomousHarvester() {
 
       const fresh = await fetchLivePublicFeeds(0, country === 'ALL' ? undefined : country);
       if (fresh && fresh.length > 0) {
-        // High-concurrency batch pre-check (35 parallel probes)
-        const probeBatch = fresh.slice(0, 35);
+        // High-concurrency batch pre-check (75 parallel probes)
+        const probeBatch = fresh.slice(0, 75);
         const tested = await Promise.all(
           probeBatch.map(async (p) => {
             const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1200);
@@ -690,7 +690,7 @@ export function startPerpetualAutonomousHarvester() {
     } catch {
       // Ignore network hiccup and continue
     } finally {
-      setTimeout(cycleHarvest, 3000);
+      setTimeout(cycleHarvest, 2000);
     }
   };
 

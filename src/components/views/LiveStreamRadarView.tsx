@@ -190,55 +190,60 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     const syncTimer = setInterval(fetchStats, 4000);
 
     // Initial load: Pre-populate active & offline lists immediately from real database inventory
-    fetch('/api/proxies?limit=300')
-      .then(r => r.json())
-      .then(res => {
-        if (res && Array.isArray(res.data) && res.data.length > 0) {
-          const store = getSessionMap();
-          const initActive: LiveDiscoveredProxy[] = [];
-          const initOffline: LiveDiscoveredProxy[] = [];
+    Promise.all([
+      fetch('/api/proxies?status=ACTIVE&limit=250').then(r => r.json()).catch(() => ({ data: [] })),
+      fetch('/api/proxies?status=INACTIVE&limit=250').then(r => r.json()).catch(() => ({ data: [] }))
+    ]).then(([activeRes, inactiveRes]) => {
+      const store = getSessionMap();
+      const initActive: LiveDiscoveredProxy[] = [];
+      const initOffline: LiveDiscoveredProxy[] = [];
 
-          res.data.forEach((p: any) => {
-            const mapped: LiveDiscoveredProxy = {
-              ip: p.host || p.ip || '127.0.0.1',
-              port: p.port || 80,
-              protocol: p.protocol || 'http',
-              normalized_endpoint: p.normalized_endpoint,
-              country_code: p.country_code || 'US',
-              country_name: p.country_code ? getCountryInfo(p.country_code).name : 'Worldwide',
-              flag: p.country_code ? getCountryInfo(p.country_code).flag : '🌐',
-              anonymity: p.anonymity || 'anonymous',
-              latency_ms: p.last_latency_ms || 120,
-              source: p.source_name || 'Verified Database Pool',
-              verified_active: p.current_status === 'ACTIVE',
-              timestamp: p.last_checked_at || new Date().toISOString()
-            };
+      const mapProxy = (p: any, isActive: boolean): LiveDiscoveredProxy => ({
+        ip: p.host || p.ip || '127.0.0.1',
+        port: p.port || 80,
+        protocol: p.protocol || 'http',
+        normalized_endpoint: p.normalized_endpoint,
+        country_code: p.country_code || 'US',
+        country_name: p.country_code ? getCountryInfo(p.country_code).name : 'Worldwide',
+        flag: p.country_code ? getCountryInfo(p.country_code).flag : '🌐',
+        anonymity: p.anonymity || 'anonymous',
+        latency_ms: p.last_latency_ms || 120,
+        source: p.source_name || 'Verified Database Pool',
+        verified_active: isActive,
+        timestamp: p.last_checked_at || new Date().toISOString()
+      });
 
-            store.set(mapped.normalized_endpoint, mapped);
-            if (mapped.verified_active) {
-              initActive.push(mapped);
-            } else {
-              initOffline.push(mapped);
-            }
-          });
+      if (activeRes && Array.isArray(activeRes.data)) {
+        activeRes.data.forEach((p: any) => {
+          const mapped = mapProxy(p, true);
+          store.set(mapped.normalized_endpoint, mapped);
+          initActive.push(mapped);
+        });
+      }
 
-          if (initActive.length > 0) {
-            setActiveList(prev => {
-              const seen = new Set(prev.map(x => x.normalized_endpoint));
-              const toAdd = initActive.filter(x => !seen.has(x.normalized_endpoint));
-              return [...prev, ...toAdd].slice(0, 300);
-            });
-          }
-          if (initOffline.length > 0) {
-            setOfflineList(prev => {
-              const seen = new Set(prev.map(x => x.normalized_endpoint));
-              const toAdd = initOffline.filter(x => !seen.has(x.normalized_endpoint));
-              return [...prev, ...toAdd].slice(0, 300);
-            });
-          }
-        }
-      })
-      .catch(() => {});
+      if (inactiveRes && Array.isArray(inactiveRes.data)) {
+        inactiveRes.data.forEach((p: any) => {
+          const mapped = mapProxy(p, false);
+          store.set(mapped.normalized_endpoint, mapped);
+          initOffline.push(mapped);
+        });
+      }
+
+      if (initActive.length > 0) {
+        setActiveList(prev => {
+          const seen = new Set(prev.map(x => x.normalized_endpoint));
+          const toAdd = initActive.filter(x => !seen.has(x.normalized_endpoint));
+          return [...prev, ...toAdd].slice(0, 300);
+        });
+      }
+      if (initOffline.length > 0) {
+        setOfflineList(prev => {
+          const seen = new Set(prev.map(x => x.normalized_endpoint));
+          const toAdd = initOffline.filter(x => !seen.has(x.normalized_endpoint));
+          return [...prev, ...toAdd].slice(0, 300);
+        });
+      }
+    }).catch(() => {});
 
     // When user switches browser tabs or returns, immediately refresh stats without resetting
     const handleVisibilityChange = () => {
@@ -958,7 +963,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#172342] hover:bg-[#1f305c] text-cyan-300 border border-cyan-500/30 transition-all shadow-md cursor-pointer"
             title="Download only 100% verified working LIVE proxies streamed in this session (Closed strictly excluded)"
           >
-            <Download className="w-3.5 h-3.5 text-cyan-400" /> Export Live Streamed ({liveProxies.length > 0 ? liveProxies.length.toLocaleString() : 'Live'} .TXT)
+            <Download className="w-3.5 h-3.5 text-cyan-400" /> Export Live Streamed ({totalLiveCount > 0 ? totalLiveCount.toLocaleString() : 'Live'} .TXT)
           </button>
 
           <button
@@ -1021,10 +1026,10 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
             <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
             <h2 className="text-sm font-bold text-white tracking-wide">
               {viewFilter === 'live' 
-                ? `🟢 Active Verified Section (${activeList.length} online)` 
+                ? `🟢 Active Verified Section (${totalLiveCount.toLocaleString()} online)` 
                 : viewFilter === 'dead' 
-                ? `🔴 Offline Retest Queue (${offlineList.length} waiting for recovery)` 
-                : `🌐 All Worldwide Telemetry (${totalTelemetryCount})`}
+                ? `🔴 Offline Retest Queue (${totalDeadCount.toLocaleString()} waiting for recovery)` 
+                : `🌐 All Worldwide Telemetry (${totalStreamedCount.toLocaleString()})`}
             </h2>
           </div>
 
@@ -1053,7 +1058,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Active Section ({activeList.length})
+                Active Section ({totalLiveCount.toLocaleString()})
               </button>
 
               <button
@@ -1065,7 +1070,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                Offline Pool ({offlineList.length})
+                Offline Pool ({totalDeadCount.toLocaleString()})
               </button>
 
               <button
@@ -1076,7 +1081,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                All ({totalTelemetryCount})
+                All ({totalStreamedCount.toLocaleString()})
               </button>
             </div>
           </div>

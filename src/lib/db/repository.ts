@@ -486,6 +486,17 @@ class Repository {
 
   constructor() {
     this.state = this.loadState();
+    // Auto-launch perpetual autonomous harvester in background so proxy finding continues 24/7
+    // even if website or browser tab is closed!
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test' && process.env.NEXT_PHASE !== 'phase-production-build') {
+      setTimeout(() => {
+        try {
+          import('../discovery/live_stream').then(({ startPerpetualAutonomousHarvester }) => {
+            startPerpetualAutonomousHarvester();
+          }).catch(() => {});
+        } catch {}
+      }, 2000);
+    }
   }
 
   private loadState(): DBState {
@@ -647,17 +658,10 @@ class Repository {
   }
 
   private enforceSafetyCap() {
-    if (this.state.proxies.length > 50000) {
-      this.pruneStaleClosedProxies(12 * 60 * 60 * 1000);
-      if (this.state.proxies.length > 50000) {
-        const removed = this.state.proxies.splice(50000);
-        for (const p of removed) {
-          const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
-          this.endpointSet.delete(key);
-          this.proxyEndpointMap.delete(key);
-          this.proxyIdMap.delete(p.id);
-        }
-      }
+    // Only prune dead/closed proxies older than 24 hours when inventory exceeds 200,000.
+    // LIVE ACTIVE PROXIES ARE PERMANENTLY PRESERVED AND NEVER DROPPED!
+    if (this.state.proxies.length > 200000) {
+      this.pruneStaleClosedProxies(24 * 60 * 60 * 1000);
     }
   }
 

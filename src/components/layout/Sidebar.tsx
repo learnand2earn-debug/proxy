@@ -145,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               {item.badge !== undefined && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.badgeColor || 'bg-[#172342] text-slate-300'}`}>
-                  {item.badge}
+                  {typeof item.badge === 'number' ? item.badge.toLocaleString() : item.badge}
                 </span>
               )}
             </button>
@@ -175,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               {item.badge !== undefined && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.badgeColor || 'bg-[#172342] text-slate-300'}`}>
-                  {item.badge}
+                  {typeof item.badge === 'number' ? item.badge.toLocaleString() : item.badge}
                 </span>
               )}
             </button>
@@ -205,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               {item.badge !== undefined && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.badgeColor || 'bg-[#172342] text-slate-300'}`}>
-                  {item.badge}
+                  {typeof item.badge === 'number' ? item.badge.toLocaleString() : item.badge}
                 </span>
               )}
             </button>
@@ -240,7 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   {item.badge !== undefined && (
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${item.badgeColor || 'bg-[#172342] text-slate-300'}`}>
-                      {item.badge}
+                      {typeof item.badge === 'number' ? item.badge.toLocaleString() : item.badge}
                     </span>
                   )}
                 </button>
