@@ -9,6 +9,7 @@ export async function GET(request: Request) {
     const format = (searchParams.get('format') || 'csv').toLowerCase(); // csv | json | txt
     const status = searchParams.get('status') as ProxyStatus | undefined;
     const country = searchParams.get('country') || searchParams.get('country_code') || undefined;
+    const target = searchParams.get('target') || undefined;
     const is_quarantined = searchParams.has('is_quarantined') 
       ? searchParams.get('is_quarantined') === 'true' 
       : undefined;
@@ -18,11 +19,13 @@ export async function GET(request: Request) {
       owner_id: DEFAULT_OWNER_ID,
       status: status || undefined,
       country_code: country,
+      target,
       is_quarantined,
       limit: 0 // 0 = UNLIMITED (export every single proxy without cap)
     });
 
-    const filename = `proxy_inventory_${country || 'all'}_${status || 'all'}_${Date.now()}`;
+    const targetLabel = target ? `_${target}` : '';
+    const filename = `proxy_inventory_${country || 'all'}_${status || 'all'}${targetLabel}_${Date.now()}`;
 
     // TXT Format: host:port per line
     if (format === 'txt') {
@@ -54,6 +57,12 @@ export async function GET(request: Request) {
           last_checked: p.last_checked_at,
           source: p.source_name,
           country: p.country_code,
+          anonymity: p.anonymity,
+          target_compatibility: p.target_compatibility || {
+            web: true,
+            facebook: p.tags?.includes('facebook-ready') || false,
+            linkedin: p.tags?.includes('linkedin-ready') || false
+          },
           is_quarantined: p.is_quarantined,
           quarantine_reason: p.quarantine_reason
         };
@@ -76,6 +85,10 @@ export async function GET(request: Request) {
       'Normalized Endpoint',
       'Status',
       'Latency (ms)',
+      'Facebook Ready',
+      'LinkedIn Ready',
+      'Web Ready',
+      'Anonymity',
       'Last Checked',
       'Last Successful Check',
       'Source',
@@ -86,25 +99,34 @@ export async function GET(request: Request) {
       'Quarantine Reason'
     ];
 
-    const rows = proxies.map(p => [
-      p.id,
-      p.protocol,
-      p.host,
-      p.port,
-      `"${include_credentials ? p.normalized_endpoint : maskEndpoint(p.normalized_endpoint)}"`,
-      p.current_status,
-      p.last_latency_ms || '',
-      p.last_checked_at || '',
-      p.last_successful_check_at || '',
-      `"${p.source_name || ''}"`,
-      p.country_code || '',
-      p.consecutive_failures,
-      p.recovery_count,
-      p.is_quarantined ? 'TRUE' : 'FALSE',
-      `"${p.quarantine_reason || ''}"`
-    ]);
+    const rows = proxies.map(p => {
+      const fbReady = p.target_compatibility?.facebook || p.tags?.includes('facebook-ready') ? 'YES' : 'NO';
+      const liReady = p.target_compatibility?.linkedin || p.tags?.includes('linkedin-ready') ? 'YES' : 'NO';
+      const webReady = p.target_compatibility?.web || p.tags?.includes('web-ready') ? 'YES' : 'YES';
+      return [
+        p.id,
+        p.protocol,
+        p.host,
+        p.port,
+        `"${include_credentials ? p.normalized_endpoint : maskEndpoint(p.normalized_endpoint)}"`,
+        p.current_status,
+        p.last_latency_ms || '',
+        fbReady,
+        liReady,
+        webReady,
+        p.anonymity || 'anonymous',
+        p.last_checked_at || '',
+        p.last_successful_check_at || '',
+        `"${p.source_name || ''}"`,
+        p.country_code || '',
+        p.consecutive_failures,
+        p.recovery_count,
+        p.is_quarantined ? 'YES' : 'NO',
+        `"${p.quarantine_reason || ''}"`
+      ].join(',');
+    });
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const csvContent = [headers.join(','), ...rows].join('\n');
 
     return new NextResponse(csvContent, {
       headers: {

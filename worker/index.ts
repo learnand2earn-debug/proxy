@@ -4,8 +4,8 @@ import { checkProxyEndpoint } from '../src/lib/checker/engine';
 import { dispatchNotification } from '../src/lib/notifications/service';
 
 const PORT = parseInt(process.env.WORKER_PORT || '3001', 10);
-const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || '5', 10);
-const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '10000', 10);
+const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || '35', 10);
+const POLL_INTERVAL_MS = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '6000', 10);
 
 let isRunning = true;
 let activeJobs = 0;
@@ -49,7 +49,7 @@ export async function runMonitoringCycle(): Promise<{ checked: number; recovered
   const now = Date.now();
 
   // Get eligible proxies for check
-  const { data: proxies } = repo.getProxies({ limit: 100 });
+  const { data: proxies } = repo.getProxies({ limit: 250 });
   const eligible = proxies.filter(p => {
     if (p.is_quarantined) return false;
     const nextCheck = new Date(p.next_scheduled_check_at).getTime();
@@ -73,7 +73,7 @@ export async function runMonitoringCycle(): Promise<{ checked: number; recovered
     await Promise.all(chunk.map(async (proxy) => {
       try {
         console.log(`[Worker] Checking ${proxy.protocol}://${proxy.host}:${proxy.port} (Status: ${proxy.current_status})...`);
-        const result = await checkProxyEndpoint(proxy, { timeoutMs: 5000 });
+        const result = await checkProxyEndpoint(proxy, { timeoutMs: 4500, target: 'all' });
         
         const updateResult = repo.updateProxyCheck(proxy.id, result);
         totalChecksRun++;
@@ -136,6 +136,15 @@ process.on('SIGINT', () => {
   console.log('[Worker] SIGINT received. Shutting down gracefully...');
   isRunning = false;
   healthServer.close(() => process.exit(0));
+});
+
+// Protect 24/7 worker process from sudden crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.warn('[Worker] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Worker] Uncaught Exception:', err);
 });
 
 // Run loop if started directly

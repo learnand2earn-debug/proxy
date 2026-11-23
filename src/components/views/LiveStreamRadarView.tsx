@@ -46,6 +46,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [streamSpeed, setStreamSpeed] = useState<'normal' | 'fast' | 'turbo'>('fast');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
+  const [targetFilter, setTargetFilter] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [autoIngest, setAutoIngest] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
@@ -382,12 +383,12 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     return () => clearInterval(flushTimer);
   }, [isPlaying]);
 
-  // Connect to SSE Stream (filtered by country & protocol)
+  // Connect to SSE Stream (filtered by country, protocol & target)
   useEffect(() => {
     if (!isPlaying) return;
 
     let eventSource: EventSource | null = null;
-    const url = `/api/stream/live?speed=${streamSpeed}&protocol=${protocolFilter}&auto_ingest=${autoIngest}&country=${selectedCountry}`;
+    const url = `/api/stream/live?speed=${streamSpeed}&protocol=${protocolFilter}&target=${targetFilter}&auto_ingest=${autoIngest}&country=${selectedCountry}`;
 
     try {
       eventSource = new EventSource(url);
@@ -470,7 +471,7 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
         eventSource.close();
       }
     };
-  }, [isPlaying, streamSpeed, protocolFilter, autoIngest, selectedCountry, playBeep]);
+  }, [isPlaying, streamSpeed, protocolFilter, targetFilter, autoIngest, selectedCountry, playBeep]);
 
   // Instant Bulk Ingest Button (Large high-yield batch of selected country)
   const handleBulkIngestNow = async () => {
@@ -608,11 +609,19 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
     ? Math.round(liveProxies.reduce((acc, p) => acc + (p.latency_ms || 0), 0) / liveProxies.length)
     : 0;
 
-  const displayedProxies = viewFilter === 'all'
-    ? [...activeList, ...offlineList].slice(0, 250)
+  const rawDisplayed = viewFilter === 'all'
+    ? [...activeList, ...offlineList]
     : viewFilter === 'live'
-    ? activeList.slice(0, 250)
-    : offlineList.slice(0, 250);
+    ? activeList
+    : offlineList;
+
+  const displayedProxies = rawDisplayed.filter(p => {
+    if (targetFilter === 'all') return true;
+    if (targetFilter === 'facebook') return p.target_compatibility?.facebook || (p.verified_active && (p.protocol === 'socks5' || p.protocol === 'https'));
+    if (targetFilter === 'linkedin') return p.target_compatibility?.linkedin || (p.verified_active && (p.protocol === 'socks5' || p.protocol === 'https'));
+    if (targetFilter === 'web') return true;
+    return true;
+  }).slice(0, 250);
 
   return (
     <div className="space-y-6">
@@ -893,6 +902,31 @@ export const LiveStreamRadarView: React.FC<LiveStreamRadarViewProps> = ({
                 }`}
               >
                 {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Target Platform Optimization Filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-400">Target:</span>
+          <div className="flex items-center bg-[#131d35] rounded-lg p-1 border border-[#1f2e52]">
+            {[
+              { id: 'all', label: 'All Targets' },
+              { id: 'web', label: '🌐 Web' },
+              { id: 'facebook', label: '📘 FB Ready' },
+              { id: 'linkedin', label: '💼 LI Ready' }
+            ].map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTargetFilter(t.id)}
+                className={`px-3 py-1 rounded text-xs font-bold transition-all ${
+                  targetFilter === t.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {t.label}
               </button>
             ))}
           </div>

@@ -9,6 +9,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') as ProxyStatus | undefined;
     const protocol = searchParams.get('protocol') as ProxyProtocol | undefined;
+    const target = searchParams.get('target') || undefined;
     const source_id = searchParams.get('source_id') || undefined;
     const search = searchParams.get('search') || undefined;
     const country = searchParams.get('country') || searchParams.get('country_code') || undefined;
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
       owner_id: DEFAULT_OWNER_ID,
       status: status || undefined,
       protocol: protocol || undefined,
+      target,
       source_id,
       search,
       country_code: country,

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Download, FileSpreadsheet, FileJson, FileText, Lock, Globe, CheckCircle2 } from 'lucide-react';
+import { X, Download, FileSpreadsheet, FileJson, FileText, Lock, Globe, CheckCircle2, Zap } from 'lucide-react';
 import { POPULAR_COUNTRIES, ALL_COUNTRIES } from '@/lib/constants/countries';
 
 interface ExportModalProps {
@@ -12,6 +12,7 @@ interface ExportModalProps {
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
   const [format, setFormat] = useState<'csv' | 'json' | 'txt'>('txt');
   const [country, setCountry] = useState<string>('ALL');
+  const [target, setTarget] = useState<string>('all');
   const [includeCredentials, setIncludeCredentials] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -19,19 +20,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
   const handleDownload = () => {
     setIsExporting(true);
-    // Strictly export ACTIVE live working proxies only (closed proxies excluded)
     let url = `/api/proxies/export?format=${format}&status=ACTIVE`;
     if (country !== 'ALL') {
       url += `&country=${country}`;
+    }
+    if (target !== 'all') {
+      url += `&target=${target}`;
     }
     if (includeCredentials) {
       url += `&include_credentials=true`;
     }
 
-    // Trigger download
+    const targetSlug = target !== 'all' ? `_${target}` : '';
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `live_active_proxies_${country}_${Date.now()}.${format}`);
+    link.setAttribute('download', `live_active_proxies_${country}${targetSlug}_${Date.now()}.${format}`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -58,11 +61,57 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             <span>Export Live Working Proxies</span>
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Download 100% verified working live proxies. Closed proxies are automatically excluded.
+            Download 100% verified working live proxies filtered by target platform and geography.
           </p>
         </div>
 
         <div className="space-y-4">
+          {/* Target Platform Filter */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Target Platform Optimization</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setTarget('all')}
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  target === 'all'
+                    ? 'border-emerald-500 bg-emerald-600/20 text-white font-bold shadow-sm'
+                    : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
+                }`}
+              >
+                <span className="text-xs block">🌐 All Targets</span>
+                <span className="text-[10px] text-slate-400">General Web</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTarget('facebook')}
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  target === 'facebook'
+                    ? 'border-blue-500 bg-blue-600/20 text-white font-bold shadow-sm'
+                    : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
+                }`}
+              >
+                <span className="text-xs block">📘 Facebook</span>
+                <span className="text-[10px] text-blue-300">SSL CONNECT</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTarget('linkedin')}
+                className={`p-2.5 rounded-xl border text-center transition-all ${
+                  target === 'linkedin'
+                    ? 'border-indigo-500 bg-indigo-600/20 text-white font-bold shadow-sm'
+                    : 'border-[#1e2d54] bg-[#131d35] text-slate-400 hover:text-white'
+                }`}
+              >
+                <span className="text-xs block">💼 LinkedIn</span>
+                <span className="text-[10px] text-indigo-300">Elite / TLS</span>
+              </button>
+            </div>
+          </div>
+
           {/* Format Selection */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-2">Export Format</label>

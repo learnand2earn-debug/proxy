@@ -44,6 +44,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   // Default to ALL Countries (Global Genuine Pool) - Never hardcoded to Pakistan!
   const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
+  const [targetFilter, setTargetFilter] = useState<string>('all');
   const [requestedCount, setRequestedCount] = useState<number>(2500);
   const [autoSaveDb, setAutoSaveDb] = useState<boolean>(true);
   
@@ -114,6 +115,11 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             latency_ms: p.last_latency_ms || 85,
             source: p.source_name || (isAll ? 'Global Pool Feed' : `Targeted ${pInfo.name} Feed`),
             verified_active: p.current_status === 'ACTIVE',
+            target_compatibility: p.target_compatibility || {
+              web: true,
+              facebook: p.tags?.includes('facebook-ready') || false,
+              linkedin: p.tags?.includes('linkedin-ready') || false
+            },
             timestamp: p.created_at || new Date().toISOString()
           };
         });
@@ -158,7 +164,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
       const proxyId = ingestData.record?.id;
 
       if (proxyId) {
-        const checkRes = await fetch(`/api/proxies/${proxyId}/check`, { method: 'POST' });
+        const checkRes = await fetch(`/api/proxies/${proxyId}/check?target=all`, { method: 'POST' });
         const checkData = await checkRes.json();
         setTestResults(prev => ({
           ...prev,
@@ -166,7 +172,8 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
             status: checkData.checkResult?.status || 'UNKNOWN',
             latency: checkData.checkResult?.latency_ms || proxy.latency_ms,
             handshake: checkData.checkResult?.handshake_success,
-            statusCode: checkData.checkResult?.status_code
+            statusCode: checkData.checkResult?.status_code,
+            compatibility: checkData.compatibility
           }
         }));
         if (onProxyIngested) onProxyIngested();
@@ -220,6 +227,11 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
   const filteredList = useMemo(() => {
     return harvestedProxies.filter(p => {
       if (protocolFilter !== 'all' && p.protocol !== protocolFilter) return false;
+      if (targetFilter !== 'all') {
+        const t = targetFilter.toLowerCase();
+        if (t === 'facebook' && !(p.target_compatibility?.facebook || p.protocol === 'socks5' || p.protocol === 'https')) return false;
+        if (t === 'linkedin' && !(p.target_compatibility?.linkedin || p.protocol === 'socks5' || p.protocol === 'https')) return false;
+      }
       if (tableSearch) {
         const q = tableSearch.toLowerCase();
         return (
@@ -231,7 +243,7 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
       }
       return true;
     });
-  }, [harvestedProxies, protocolFilter, tableSearch]);
+  }, [harvestedProxies, protocolFilter, targetFilter, tableSearch]);
 
   // High-performance pagination: renders 50 rows at a time to prevent any DOM lag or browser hang
   const totalPages = Math.max(1, Math.ceil(filteredList.length / PAGE_SIZE));
@@ -402,6 +414,34 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                     }`}
                   >
                     {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Target Optimization */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-400">Target:</span>
+              <div className="flex items-center bg-[#141e36] rounded-lg p-1 border border-[#202f52]">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'web', label: 'Web' },
+                  { id: 'facebook', label: '📘 FB Ready' },
+                  { id: 'linkedin', label: '💼 LI Ready' }
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setTargetFilter(t.id);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                      targetFilter === t.id
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -584,6 +624,36 @@ export const CountryHarvesterView: React.FC<CountryHarvesterViewProps> = ({
                       <span className="hidden md:inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-[#141e36] text-slate-300 border border-[#202f54]">
                         {proxy.anonymity.toUpperCase()}
                       </span>
+
+                      {/* Target Platform Compatibility Badges */}
+                      <div className="hidden lg:flex items-center gap-1">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            proxy.target_compatibility?.facebook || proxy.protocol === 'socks5' || proxy.protocol === 'https'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                              : 'bg-slate-800/40 text-slate-600 border border-slate-700/30'
+                          }`}
+                          title="Facebook SSL Ready"
+                        >
+                          FB
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            proxy.target_compatibility?.linkedin || proxy.protocol === 'socks5' || proxy.protocol === 'https'
+                              ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm'
+                              : 'bg-slate-800/40 text-slate-600 border border-slate-700/30'
+                          }`}
+                          title="LinkedIn TLS Ready"
+                        >
+                          LI
+                        </span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                          title="General Web Ready"
+                        >
+                          WEB
+                        </span>
+                      </div>
                     </div>
 
                     {/* Right: Latency, Live Probe Results & Test Button */}

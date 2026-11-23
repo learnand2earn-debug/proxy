@@ -58,6 +58,7 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || 'ALL');
   const [protocolFilter, setProtocolFilter] = useState<string>('ALL');
+  const [targetFilter, setTargetFilter] = useState<string>('ALL');
   const [countryFilter, setCountryFilter] = useState<string>('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [checkingIds, setCheckingIds] = useState<Record<string, boolean>>({});
@@ -134,7 +135,7 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
     e.stopPropagation();
     setCheckingIds(prev => ({ ...prev, [id]: true }));
     try {
-      await fetch(`/api/proxies/${id}/check`, { method: 'POST' });
+      await fetch(`/api/proxies/${id}/check?target=all`, { method: 'POST' });
       onRefresh();
     } catch (err) {
       console.error(err);
@@ -228,6 +229,12 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
     if (statusFilter !== 'ALL' && p.current_status !== statusFilter) return false;
     if (protocolFilter !== 'ALL' && p.protocol !== protocolFilter) return false;
     if (countryFilter !== 'ALL' && (p.country_code || '').toUpperCase() !== countryFilter.toUpperCase()) return false;
+    if (targetFilter !== 'ALL') {
+      const t = targetFilter.toLowerCase();
+      if (t === 'facebook' && !(p.target_compatibility?.facebook || p.tags?.includes('facebook-ready'))) return false;
+      if (t === 'linkedin' && !(p.target_compatibility?.linkedin || p.tags?.includes('linkedin-ready'))) return false;
+      if (t === 'web' && !(p.target_compatibility?.web || p.tags?.includes('web-ready'))) return false;
+    }
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
@@ -310,6 +317,18 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
             <option value="socks4">SOCKS4</option>
           </select>
 
+          {/* Target Compatibility Filter */}
+          <select
+            value={targetFilter}
+            onChange={(e) => setTargetFilter(e.target.value)}
+            className="bg-[#131d35] border border-cyan-500/40 rounded-lg text-xs text-cyan-300 px-3 py-1.5 focus:outline-none focus:border-cyan-400 font-bold"
+          >
+            <option value="ALL">🎯 All Targets</option>
+            <option value="WEB">🌐 Web General</option>
+            <option value="FACEBOOK">📘 Facebook Ready</option>
+            <option value="LINKEDIN">💼 LinkedIn Ready</option>
+          </select>
+
           <button
             onClick={async () => {
               try {
@@ -376,6 +395,7 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
               <th className="p-3">Protocol</th>
               <th className="p-3">Normalized Endpoint (Masked)</th>
               <th className="p-3">Status</th>
+              <th className="p-3">Target Ready</th>
               <th className="p-3">Latency</th>
               <th className="p-3">Source</th>
               <th className="p-3">Last Checked</th>
@@ -386,7 +406,7 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
           <tbody className="divide-y divide-[#1a2540]/60">
             {filteredList.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-slate-400">
+                <td colSpan={10} className="p-8 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Filter className="w-6 h-6 text-slate-400" />
                     <span>No proxy endpoints match the current filter criteria</span>
@@ -456,6 +476,42 @@ export const ProxyTable: React.FC<ProxyTableProps> = ({
                     {/* Status */}
                     <td className="p-3">
                       {renderStatusBadge(p.current_status, p.is_quarantined)}
+                    </td>
+
+                    {/* Target Ready Badges */}
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                            p.target_compatibility?.facebook || p.tags?.includes('facebook-ready')
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
+                              : 'bg-slate-800/40 text-slate-600 border border-slate-700/30'
+                          }`}
+                          title={p.target_compatibility?.facebook || p.tags?.includes('facebook-ready') ? 'Facebook SSL Ready (CONNECT:443)' : 'Facebook Untested or Incompatible'}
+                        >
+                          FB
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                            p.target_compatibility?.linkedin || p.tags?.includes('linkedin-ready')
+                              ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm'
+                              : 'bg-slate-800/40 text-slate-600 border border-slate-700/30'
+                          }`}
+                          title={p.target_compatibility?.linkedin || p.tags?.includes('linkedin-ready') ? 'LinkedIn TLS Ready (CONNECT:443)' : 'LinkedIn Untested or Blocked'}
+                        >
+                          LI
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                            p.current_status === 'ACTIVE'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-slate-800/40 text-slate-600 border border-slate-700/30'
+                          }`}
+                          title="General Web Ready"
+                        >
+                          WEB
+                        </span>
+                      </div>
                     </td>
 
                     {/* Latency */}

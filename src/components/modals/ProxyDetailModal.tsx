@@ -14,7 +14,8 @@ import {
   Layers, 
   History,
   Activity,
-  KeyRound
+  KeyRound,
+  Globe
 } from 'lucide-react';
 import { ProxyRecord, CheckHistoryItem, StatusTransition } from '@/types';
 import { maskEndpoint } from '@/lib/validation/parser';
@@ -35,7 +36,13 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
   const [history, setHistory] = useState<CheckHistoryItem[]>([]);
   const [transitions, setTransitions] = useState<StatusTransition[]>([]);
   const [isChecking, setIsChecking] = useState(false);
+  const [checkingTarget, setCheckingTarget] = useState<string | null>(null);
   const [lastCheckMessage, setLastCheckMessage] = useState<string | null>(null);
+  const [targetResults, setTargetResults] = useState<{
+    web?: { active: boolean; latency?: number; message?: string };
+    facebook?: { active: boolean; latency?: number; message?: string };
+    linkedin?: { active: boolean; latency?: number; message?: string };
+  }>({});
 
   useEffect(() => {
     if (proxy && isOpen) {
@@ -46,25 +53,59 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
           if (data.transitions) setTransitions(data.transitions);
         })
         .catch(console.error);
+
+      // Pre-fill target compatibility from proxy record tags & data
+      const isFb = proxy.target_compatibility?.facebook ?? proxy.tags?.includes('facebook-ready');
+      const isLi = proxy.target_compatibility?.linkedin ?? proxy.tags?.includes('linkedin-ready');
+      const isWeb = proxy.target_compatibility?.web ?? proxy.current_status === 'ACTIVE';
+
+      setTargetResults({
+        web: { active: !!isWeb, latency: proxy.last_latency_ms },
+        facebook: { active: !!isFb, latency: isFb ? proxy.last_latency_ms : undefined },
+        linkedin: { active: !!isLi, latency: isLi ? proxy.last_latency_ms : undefined }
+      });
     }
   }, [proxy, isOpen]);
 
   if (!isOpen || !proxy) return null;
 
-  const handleRunCheck = async () => {
+  const handleRunTargetCheck = async (target: 'all' | 'web' | 'facebook' | 'linkedin') => {
     setIsChecking(true);
+    setCheckingTarget(target);
     setLastCheckMessage(null);
     try {
-      const res = await fetch(`/api/proxies/${proxy.id}/check`, { method: 'POST' });
+      const res = await fetch(`/api/proxies/${proxy.id}/check?target=${target}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target })
+      });
       const data = await res.json();
       if (data.checkResult) {
-        setLastCheckMessage(`Check finished: ${data.checkResult.status} (${data.checkResult.latency_ms}ms)`);
+        if (target === 'all' && data.compatibility) {
+          setTargetResults({
+            web: { active: data.compatibility.web, latency: data.latencies?.web },
+            facebook: { active: data.compatibility.facebook, latency: data.latencies?.facebook },
+            linkedin: { active: data.compatibility.linkedin, latency: data.latencies?.linkedin }
+          });
+          setLastCheckMessage(`Multi-target check: Web (${data.compatibility.web ? 'OK' : 'FAIL'}), FB (${data.compatibility.facebook ? 'OK' : 'FAIL'}), LinkedIn (${data.compatibility.linkedin ? 'OK' : 'FAIL'})`);
+        } else {
+          setTargetResults(prev => ({
+            ...prev,
+            [target]: {
+              active: data.checkResult.status === 'ACTIVE',
+              latency: data.checkResult.latency_ms,
+              message: data.checkResult.error_message
+            }
+          }));
+          setLastCheckMessage(`${target.toUpperCase()} check: ${data.checkResult.status} (${data.checkResult.latency_ms}ms)`);
+        }
       }
       onRefresh();
     } catch (err: any) {
       setLastCheckMessage(`Check failed: ${err.message}`);
     } finally {
       setIsChecking(false);
+      setCheckingTarget(null);
     }
   };
 
@@ -97,7 +138,7 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
         </button>
 
         {/* Modal Header */}
-        <div className="mb-5 pr-8">
+        <div className="mb-4 pr-8">
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase bg-blue-500/20 text-blue-300 border border-blue-500/40">
               {proxy.protocol}
@@ -109,6 +150,16 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
             }`}>
               {proxy.is_quarantined ? 'QUARANTINED' : proxy.current_status}
             </span>
+            {proxy.country_code && (
+              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                {proxy.country_code}
+              </span>
+            )}
+            {proxy.anonymity && (
+              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase bg-cyan-950/40 text-cyan-400 border border-cyan-800">
+                {proxy.anonymity}
+              </span>
+            )}
           </div>
           <h2 className="text-base font-bold text-white font-mono tracking-tight break-all">
             {maskEndpoint(proxy.normalized_endpoint)}
@@ -117,6 +168,109 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {/* Platform Target Compatibility Suite */}
+          <div className="p-4 bg-gradient-to-r from-slate-900/90 via-[#101930] to-slate-900/90 border border-cyan-500/30 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Zap className="w-4 h-4 text-cyan-400" />
+                <span>Multi-Target Diagnostic Verification</span>
+              </span>
+              <button
+                onClick={() => handleRunTargetCheck('all')}
+                disabled={isChecking}
+                className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold transition-all shadow-glow-sm disabled:opacity-50"
+              >
+                {isChecking && checkingTarget === 'all' ? 'Verifying All...' : '⚡ Test All 3 Targets'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              {/* Web Target Card */}
+              <div className="p-3 bg-[#131d35] rounded-xl border border-[#1e2d54] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>General Web</span>
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${targetResults.web?.active ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-slate-600'}`} />
+                  </div>
+                  <div className="text-[11px] font-mono font-semibold text-slate-300">
+                    {targetResults.web?.active ? 'VERIFIED ACTIVE' : 'UNTESTED / OFFLINE'}
+                  </div>
+                  {targetResults.web?.latency && (
+                    <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
+                      {targetResults.web.latency}ms
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRunTargetCheck('web')}
+                  disabled={isChecking}
+                  className="mt-2 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors text-left"
+                >
+                  {isChecking && checkingTarget === 'web' ? 'Testing...' : 'Test Web →'}
+                </button>
+              </div>
+
+              {/* Facebook Target Card */}
+              <div className="p-3 bg-[#131d35] rounded-xl border border-[#1e2d54] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span className="text-blue-400 font-bold">f</span>
+                      <span>Facebook</span>
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${targetResults.facebook?.active ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa]' : 'bg-slate-600'}`} />
+                  </div>
+                  <div className="text-[11px] font-mono font-semibold text-slate-300">
+                    {targetResults.facebook?.active ? 'SSL READY' : 'FAIL / NO SSL'}
+                  </div>
+                  {targetResults.facebook?.latency && (
+                    <div className="text-[10px] text-blue-400 font-mono mt-0.5">
+                      {targetResults.facebook.latency}ms
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRunTargetCheck('facebook')}
+                  disabled={isChecking}
+                  className="mt-2 text-[10px] font-semibold text-blue-400 hover:text-blue-300 transition-colors text-left"
+                >
+                  {isChecking && checkingTarget === 'facebook' ? 'Testing SSL...' : 'Test Facebook →'}
+                </button>
+              </div>
+
+              {/* LinkedIn Target Card */}
+              <div className="p-3 bg-[#131d35] rounded-xl border border-[#1e2d54] flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span className="text-indigo-400 font-bold">in</span>
+                      <span>LinkedIn</span>
+                    </span>
+                    <span className={`w-2 h-2 rounded-full ${targetResults.linkedin?.active ? 'bg-indigo-400 shadow-[0_0_8px_#818cf8]' : 'bg-slate-600'}`} />
+                  </div>
+                  <div className="text-[11px] font-mono font-semibold text-slate-300">
+                    {targetResults.linkedin?.active ? 'SSL READY' : 'FAIL / BLOCKED'}
+                  </div>
+                  {targetResults.linkedin?.latency && (
+                    <div className="text-[10px] text-indigo-400 font-mono mt-0.5">
+                      {targetResults.linkedin.latency}ms
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRunTargetCheck('linkedin')}
+                  disabled={isChecking}
+                  className="mt-2 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 transition-colors text-left"
+                >
+                  {isChecking && checkingTarget === 'linkedin' ? 'Testing TLS...' : 'Test LinkedIn →'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-3 bg-[#131d35] rounded-xl border border-[#1e2d54]">
@@ -250,7 +404,7 @@ export const ProxyDetailModal: React.FC<ProxyDetailModalProps> = ({
             </button>
 
             <button
-              onClick={handleRunCheck}
+              onClick={() => handleRunTargetCheck('all')}
               disabled={isChecking}
               className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-glow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
             >

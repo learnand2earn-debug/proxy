@@ -1,5 +1,7 @@
 export const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
 
+export type TargetPlatform = 'web' | 'facebook' | 'linkedin' | 'all';
+
 export type ProxyProtocol = 'http' | 'https' | 'socks4' | 'socks5';
 
 export type ProxyStatus = 
@@ -49,8 +51,18 @@ export interface ProxyRecord {
   quarantined_at?: string;
   country_code?: string;
   anonymity?: 'transparent' | 'anonymous' | 'elite' | 'unknown';
+  target_compatibility?: {
+    web: boolean;
+    facebook: boolean;
+    linkedin: boolean;
+    last_tested_target?: string;
+  };
   tags: string[];
 }
+
+export type NewProxyRecord = Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined' | 'check_interval_seconds'> & {
+  check_interval_seconds?: number;
+};
 
 export interface ProxySource {
   id: string;
@@ -77,6 +89,12 @@ export interface ProxyCheckResult {
   error_category?: string;
   error_message?: string;
   diagnostic_target?: string;
+  target?: TargetPlatform;
+  target_compatibility?: {
+    web: boolean;
+    facebook: boolean;
+    linkedin: boolean;
+  };
   checked_at: string;
 }
 

@@ -18,7 +18,8 @@ import {
   LicensePlanType,
   LicenseStatus,
   AuthSession,
-  LicenseStats
+  LicenseStats,
+  NewProxyRecord
 } from '@/types';
 import { parseProxyString, maskEndpoint } from '../validation/parser';
 import { isSupabaseEnabled, insertProxiesToSupabase, getSupabaseProxyCount, deleteStaleClosedProxiesFromSupabase } from './supabase';
@@ -566,13 +567,32 @@ class Repository {
         } catch { }
       }
 
-      // Atomic copy & unlink
-      fs.copyFileSync(TEMP_FILE, DATA_FILE);
+      // Safe atomic copy & cleanup
       try {
-        fs.unlinkSync(TEMP_FILE);
+        fs.copyFileSync(TEMP_FILE, DATA_FILE);
+      } catch {
+        fs.writeFileSync(DATA_FILE, jsonStr, 'utf-8');
+      }
+      try {
+        if (fs.existsSync(TEMP_FILE)) {
+          fs.unlinkSync(TEMP_FILE);
+        }
       } catch { }
     } catch (err) {
       console.error('Failed to write store.json:', err);
+    }
+  }
+
+  private enforceSafetyCap() {
+    if (this.state.proxies.length > 15000) {
+      this.pruneStaleClosedProxies(12 * 60 * 60 * 1000);
+      if (this.state.proxies.length > 15000) {
+        const removed = this.state.proxies.splice(15000);
+        for (const p of removed) {
+          const key = `${p.owner_id}:${p.normalized_endpoint.toLowerCase()}`;
+          this.endpointSet.delete(key);
+        }
+      }
     }
   }
 
@@ -606,6 +626,7 @@ class Repository {
     owner_id?: string;
     status?: ProxyStatus;
     protocol?: ProxyProtocol;
+    target?: string;
     source_id?: string;
     search?: string;
     country_code?: string;
@@ -623,6 +644,22 @@ class Repository {
 
     if (filters.status) {
       list = list.filter(p => p.current_status === filters.status);
+    }
+
+    if (filters.target && filters.target !== 'all' && filters.target !== 'ALL') {
+      const t = filters.target.toLowerCase();
+      list = list.filter(p => {
+        if (t === 'facebook') {
+          return p.target_compatibility?.facebook || (p.tags && p.tags.includes('facebook-ready'));
+        }
+        if (t === 'linkedin') {
+          return p.target_compatibility?.linkedin || (p.tags && p.tags.includes('linkedin-ready'));
+        }
+        if (t === 'web') {
+          return p.target_compatibility?.web || (p.tags && p.tags.includes('web-ready')) || (!p.tags?.some(tag => tag.includes('-ready')));
+        }
+        return true;
+      });
     }
 
     if (filters.protocol) {
@@ -695,7 +732,7 @@ class Repository {
     return this.state.proxies.find(p => p.id === id);
   }
 
-  public insertProxiesBulk(records: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>[]): { insertedCount: number; duplicateCount: number } {
+  public insertProxiesBulk(records: NewProxyRecord[]): { insertedCount: number; duplicateCount: number } {
     if (!records || records.length === 0) return { insertedCount: 0, duplicateCount: 0 };
 
     const now = new Date().toISOString();
@@ -733,6 +770,7 @@ class Repository {
         ...record,
         id,
         source_name,
+        check_interval_seconds: record.check_interval_seconds || this.state.settings?.default_check_interval_seconds || 300,
         consecutive_failures: 0,
         recovery_count: 0,
         is_quarantined: false,
@@ -746,6 +784,7 @@ class Repository {
 
     if (newRecords.length > 0) {
       this.state.proxies.unshift(...newRecords);
+      this.enforceSafetyCap();
       this.save();
 
       // Async sync to Supabase if credentials configured
@@ -757,7 +796,7 @@ class Repository {
     return { insertedCount, duplicateCount };
   }
 
-  public insertProxy(record: Omit<ProxyRecord, 'id' | 'created_at' | 'updated_at' | 'next_scheduled_check_at' | 'consecutive_failures' | 'recovery_count' | 'is_quarantined'>): { record: ProxyRecord; is_duplicate: boolean } {
+  public insertProxy(record: NewProxyRecord): { record: ProxyRecord; is_duplicate: boolean } {
     const key = `${record.owner_id}:${record.normalized_endpoint.toLowerCase()}`;
     if (this.endpointSet.has(key)) {
       const existing = this.state.proxies.find(
@@ -780,6 +819,7 @@ class Repository {
       ...record,
       id,
       source_name,
+      check_interval_seconds: record.check_interval_seconds || this.state.settings?.default_check_interval_seconds || 300,
       consecutive_failures: 0,
       recovery_count: 0,
       is_quarantined: false,
@@ -791,6 +831,7 @@ class Repository {
 
     this.state.proxies.unshift(newRecord);
     this.endpointSet.add(key);
+    this.enforceSafetyCap();
     this.addAuditLog({
       owner_id: record.owner_id,
       action: 'PROXY_CREATED',
@@ -838,6 +879,9 @@ class Repository {
           endpoint_masked: maskEndpoint(proxy.normalized_endpoint)
         };
         this.state.transitions.unshift(transition);
+        if (this.state.transitions.length > 500) {
+          this.state.transitions = this.state.transitions.slice(0, 500);
+        }
 
         // Emit notification
         this.addNotification({
@@ -870,6 +914,9 @@ class Repository {
           endpoint_masked: maskEndpoint(proxy.normalized_endpoint)
         };
         this.state.transitions.unshift(transition);
+        if (this.state.transitions.length > 500) {
+          this.state.transitions = this.state.transitions.slice(0, 500);
+        }
 
         this.addNotification({
           owner_id: proxy.owner_id,
@@ -904,6 +951,42 @@ class Repository {
 
     proxy.previous_status = previousStatus;
     proxy.current_status = checkResult.status;
+
+    // Target compatibility updating
+    if (checkResult.target_compatibility) {
+      proxy.target_compatibility = {
+        web: checkResult.target_compatibility.web,
+        facebook: checkResult.target_compatibility.facebook,
+        linkedin: checkResult.target_compatibility.linkedin,
+        last_tested_target: checkResult.target || 'all'
+      };
+      if (!proxy.tags) proxy.tags = [];
+      const tagSet = new Set(proxy.tags);
+      if (checkResult.target_compatibility.facebook) tagSet.add('facebook-ready');
+      else tagSet.delete('facebook-ready');
+      if (checkResult.target_compatibility.linkedin) tagSet.add('linkedin-ready');
+      else tagSet.delete('linkedin-ready');
+      if (checkResult.target_compatibility.web) tagSet.add('web-ready');
+      else tagSet.delete('web-ready');
+      proxy.tags = Array.from(tagSet);
+    } else if (checkResult.target && checkResult.status === 'ACTIVE') {
+      if (!proxy.target_compatibility) {
+        proxy.target_compatibility = { web: true, facebook: false, linkedin: false };
+      }
+      if (checkResult.target === 'facebook') {
+        proxy.target_compatibility.facebook = true;
+        if (!proxy.tags) proxy.tags = [];
+        if (!proxy.tags.includes('facebook-ready')) proxy.tags.push('facebook-ready');
+      } else if (checkResult.target === 'linkedin') {
+        proxy.target_compatibility.linkedin = true;
+        if (!proxy.tags) proxy.tags = [];
+        if (!proxy.tags.includes('linkedin-ready')) proxy.tags.push('linkedin-ready');
+      } else if (checkResult.target === 'web') {
+        proxy.target_compatibility.web = true;
+        if (!proxy.tags) proxy.tags = [];
+        if (!proxy.tags.includes('web-ready')) proxy.tags.push('web-ready');
+      }
+    }
 
     // Calculate next scheduled check with bounded exponential backoff
     const nextInterval = this.calculateNextInterval(proxy);
@@ -1121,6 +1204,9 @@ class Repository {
       created_at: new Date().toISOString()
     };
     this.state.notifications.unshift(notif);
+    if (this.state.notifications.length > 500) {
+      this.state.notifications = this.state.notifications.slice(0, 500);
+    }
     this.save();
     return notif;
   }

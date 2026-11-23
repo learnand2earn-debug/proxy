@@ -3,10 +3,12 @@ import {
   getLiveProxyStreamBuffer, 
   fetchLivePublicFeeds, 
   testProxyLive, 
+  testProxyTargetLive,
   ingestLiveProxiesIntoDatabase, 
   LiveDiscoveredProxy 
 } from '@/lib/discovery/live_stream';
 import { DEFAULT_OWNER_ID } from '@/lib/db/repository';
+import { TargetPlatform } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,16 +17,21 @@ export async function GET(req: NextRequest) {
   const autoIngest = searchParams.get('auto_ingest') === 'true';
   const filterProtocol = searchParams.get('protocol') || 'all';
   const filterCountry = (searchParams.get('country') || 'ALL').trim().toUpperCase();
-  const speed = searchParams.get('speed') || 'normal';
+  const filterTarget = (searchParams.get('target') || 'all').toLowerCase();
+  const speed = searchParams.get('speed') || 'fast';
 
   // Interval in ms based on speed - faster throughput for continuous multi-proxy streaming
-  const intervalMs = speed === 'turbo' ? 120 : speed === 'fast' ? 250 : 600;
-  const burstPerTick = speed === 'turbo' ? 4 : speed === 'fast' ? 2 : 1;
+  const intervalMs = speed === 'turbo' ? 80 : speed === 'fast' ? 180 : 450;
+  const burstPerTick = speed === 'turbo' ? 6 : speed === 'fast' ? 3 : 1;
 
   const matchesFilters = (p: LiveDiscoveredProxy) => {
     const matchProto = filterProtocol === 'all' || p.protocol === filterProtocol;
     const matchCountry = filterCountry === 'ALL' || (p.country_code && p.country_code.toUpperCase() === filterCountry);
-    return matchProto && matchCountry;
+    const matchTarget = filterTarget === 'all' ||
+      (filterTarget === 'facebook' && (p.target_compatibility?.facebook || p.protocol === 'socks5' || p.protocol === 'https')) ||
+      (filterTarget === 'linkedin' && (p.target_compatibility?.linkedin || p.protocol === 'socks5' || p.protocol === 'https')) ||
+      (filterTarget === 'web');
+    return matchProto && matchCountry && matchTarget;
   };
 
   // Raw discovered proxies waiting to be tested
@@ -54,7 +61,7 @@ export async function GET(req: NextRequest) {
     }
   };
 
-  // 2. Concurrently probes raw proxies with real TCP handshakes to test live vs dead
+  // 2. Concurrently probes raw proxies with real TCP/TLS target handshakes
   const processTestBatch = async () => {
     if (isTesting || isClosed) return;
     if (rawPool.length === 0) {
@@ -64,17 +71,38 @@ export async function GET(req: NextRequest) {
 
     isTesting = true;
     try {
-      const batch = rawPool.splice(0, 30);
+      const batch = rawPool.splice(0, 45);
+      const isSpecialTarget = filterTarget === 'facebook' || filterTarget === 'linkedin';
+
       const tested = await Promise.all(
         batch.map(async (p) => {
           try {
-            const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1200);
-            return {
-              ...p,
-              latency_ms: latencyMs,
-              verified_active: isLive,
-              timestamp: new Date().toISOString()
-            };
+            if (isSpecialTarget) {
+              const res = await testProxyTargetLive(
+                { normalized_endpoint: p.normalized_endpoint, protocol: p.protocol, host: p.ip, port: p.port },
+                filterTarget as TargetPlatform,
+                2000
+              );
+              return {
+                ...p,
+                latency_ms: res.latencyMs,
+                verified_active: res.isLive,
+                target_compatibility: {
+                  web: true,
+                  facebook: filterTarget === 'facebook' ? res.isLive : !!p.target_compatibility?.facebook,
+                  linkedin: filterTarget === 'linkedin' ? res.isLive : !!p.target_compatibility?.linkedin
+                },
+                timestamp: new Date().toISOString()
+              };
+            } else {
+              const { isLive, latencyMs } = await testProxyLive(p.ip, p.port, 1200);
+              return {
+                ...p,
+                latency_ms: latencyMs,
+                verified_active: isLive,
+                timestamp: new Date().toISOString()
+              };
+            }
           } catch {
             return {
               ...p,
@@ -102,8 +130,8 @@ export async function GET(req: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
 
-      // Send initial burst of tested real proxies (up to 40)
-      const initialBurst = testedQueue.splice(0, Math.min(testedQueue.length, 40));
+      // Send initial burst of tested real proxies (up to 50)
+      const initialBurst = testedQueue.splice(0, Math.min(testedQueue.length, 50));
       controller.enqueue(encoder.encode(`event: initial_burst\ndata: ${JSON.stringify(initialBurst)}\n\n`));
 
       // Periodic stream feeder
@@ -114,8 +142,7 @@ export async function GET(req: NextRequest) {
         }
 
         try {
-          // If tested queue is low, test more proxies in parallel
-          if (testedQueue.length < 30 && !isTesting) {
+          if (testedQueue.length < 35 && !isTesting) {
             processTestBatch().catch(() => {});
           }
 
@@ -123,26 +150,25 @@ export async function GET(req: NextRequest) {
 
           const toSend = testedQueue.splice(0, Math.min(testedQueue.length, burstPerTick));
           for (const candidate of toSend) {
-            // Stream verified proxy to client
             controller.enqueue(
               encoder.encode(`event: proxy_incoming\ndata: ${JSON.stringify(candidate)}\n\n`)
             );
 
-            // Batch auto-ingestion: saves both live and inactive real results
             if (autoIngest) {
               ingestBatch.push(candidate);
-              if (ingestBatch.length >= 15) {
+              if (ingestBatch.length >= 20) {
                 const toFlush = ingestBatch.splice(0, ingestBatch.length);
                 ingestLiveProxiesIntoDatabase(toFlush, DEFAULT_OWNER_ID, true).catch(() => {});
               }
             }
           }
-        } catch (err: any) {
+        } catch {
+          isClosed = true;
           clearInterval(timer);
         }
       }, intervalMs);
 
-      // Heartbeat pulse every 2.5 seconds to keep connection alive and prevent browser tab throttling
+      // Heartbeat pulse every 2.5 seconds
       const heartbeatTimer = setInterval(() => {
         if (isClosed) {
           clearInterval(heartbeatTimer);
@@ -153,6 +179,7 @@ export async function GET(req: NextRequest) {
             encoder.encode(`: keep-alive\nevent: ping\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`)
           );
         } catch {
+          isClosed = true;
           clearInterval(heartbeatTimer);
         }
       }, 2500);

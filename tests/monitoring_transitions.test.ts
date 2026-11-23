@@ -7,7 +7,7 @@ describe('Monitoring & State Transition Engine', () => {
 
   beforeEach(() => {
     // Insert a fresh test proxy
-    const uniqueEndpoint = `socks5://198.51.100.${Math.floor(Math.random() * 200 + 10)}:1080`;
+    const uniqueEndpoint = `socks5://198.51.100.${Math.floor(Math.random() * 200 + 10)}:${Math.floor(Math.random() * 50000 + 10000)}`;
     const { record } = repo.insertProxy({
       owner_id: DEFAULT_OWNER_ID,
       normalized_endpoint: uniqueEndpoint,
