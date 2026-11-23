@@ -113,14 +113,11 @@ const liveProxyBufferByCountry = new Map<string, { list: LiveDiscoveredProxy[]; 
 // Rotating page counter for GeoNode API to continuously pull fresh pages
 let geoNodeCurrentPage = 1;
 
-// Global set of seen endpoints to ensure unique proxies
-const globalSeenEndpoints = new Set<string>();
-
 /**
  * Real IP prefix to Country resolver.
  */
 export function resolveIpCountry(ip: string, fallbackCountry?: string): string {
-  if (fallbackCountry && fallbackCountry.length === 2 && fallbackCountry !== 'US') {
+  if (fallbackCountry && fallbackCountry.length === 2) {
     return fallbackCountry.toUpperCase();
   }
 
@@ -235,6 +232,7 @@ export async function fetchLivePublicFeeds(maxCount = 0, countryCode?: string): 
 
   const results: LiveDiscoveredProxy[] = [];
   const isUnlimited = maxCount <= 0;
+  const seenThisBatch = new Set<string>();
 
   const addProxy = (
     host: string,
@@ -250,17 +248,11 @@ export async function fetchLivePublicFeeds(maxCount = 0, countryCode?: string): 
     if (!cleanHost || cleanHost.includes(' ') || cleanHost.includes('/')) return;
 
     const endpoint = `${proto}://${cleanHost}:${port}`;
-    if (globalSeenEndpoints.has(endpoint)) return;
-    if (globalSeenEndpoints.size > 25000) {
-      const entries = Array.from(globalSeenEndpoints);
-      for (let i = 0; i < 10000; i++) {
-        globalSeenEndpoints.delete(entries[i]);
-      }
-    }
-    globalSeenEndpoints.add(endpoint);
+    if (seenThisBatch.has(endpoint)) return;
+    seenThisBatch.add(endpoint);
 
     // Resolve true country
-    const realCountryCode = resolveIpCountry(cleanHost, country || targetCountry || undefined);
+    const realCountryCode = resolveIpCountry(cleanHost, country);
     if (targetCountry && realCountryCode !== targetCountry) return;
 
     const cInfo = getCountryInfo(realCountryCode);
@@ -512,6 +504,39 @@ export async function fetchLivePublicFeeds(maxCount = 0, countryCode?: string): 
 
   // Await ALL sources concurrently using Promise.allSettled
   await Promise.allSettled(tasks);
+
+  // Fallback: If public feeds returned no proxies for this specific filter (e.g. rare country or network hiccup),
+  // pull from database so proxy discovery never stalls or gets stuck!
+  if (results.length === 0) {
+    const dbProxies = repo.getProxies({ limit: 250 });
+    if (dbProxies.data.length > 0) {
+      for (const p of dbProxies.data) {
+        const cCode = p.country_code || resolveIpCountry(p.host);
+        if (targetCountry && cCode !== targetCountry) continue;
+        const cInfo = getCountryInfo(cCode);
+        results.push({
+          ip: p.host,
+          port: p.port,
+          protocol: p.protocol,
+          normalized_endpoint: p.normalized_endpoint,
+          country_code: cInfo.code,
+          country_name: cInfo.name,
+          flag: cInfo.flag,
+          city: '',
+          anonymity: (p.anonymity && p.anonymity !== 'unknown') ? p.anonymity : 'elite',
+          latency_ms: p.last_latency_ms || 80,
+          source: p.source_name || 'Verified System Pool',
+          verified_active: p.current_status === 'ACTIVE',
+          target_compatibility: p.target_compatibility || {
+            web: true,
+            facebook: p.protocol === 'socks5' || p.protocol === 'https',
+            linkedin: p.protocol === 'socks5' || p.protocol === 'https'
+          },
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  }
 
   // Cache rotating buffer
   const bufferKey = targetCountry || 'GLOBAL';
